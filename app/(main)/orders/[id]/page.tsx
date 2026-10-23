@@ -17,6 +17,7 @@ import { ActionForm, Submit } from "@/components/ActionForm";
 import { Composer } from "@/components/Composer";
 import { Field, StatusBadge } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
+import { left } from "@/lib/board";
 import { describeEvent } from "@/lib/events";
 import { almatyDay, dm, dmhm, hhmm, prettyPhone, tenge } from "@/lib/format";
 import { ORDER_TEMPLATES, orderText, type OrderTemplate } from "@/lib/templates";
@@ -27,15 +28,6 @@ export const metadata: Metadata = { title: "Заказ" };
 
 const METHOD = { kaspi_invoice: "Kaspi", cash: "Наличные", bank_transfer: "Перевод" } as const;
 const PAY_STATUS = { pending: "ждём оплату", paid: "оплачено", cancelled: "отменён" } as const;
-
-// "2 дн 5 ч" / "40 мин" until the hold runs out
-function left(until: Date) {
-  const min = Math.round((until.getTime() - Date.now()) / 60_000);
-  if (min <= 0) return "истекает";
-  const d = Math.floor(min / 1440);
-  const h = Math.floor((min % 1440) / 60);
-  return d ? `${d} дн ${h} ч` : h ? `${h} ч ${min % 60} мин` : `${min} мин`;
-}
 
 // datetime-local value in Almaty time (UTC+5 all year)
 const localInput = (d: Date) => new Date(d.getTime() + 5 * 3_600_000).toISOString().slice(0, 16);

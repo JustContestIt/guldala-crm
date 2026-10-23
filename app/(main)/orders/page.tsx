@@ -6,8 +6,9 @@ import { ActionForm, Submit } from "@/components/ActionForm";
 import { StatusBadge } from "@/components/ui";
 import { db } from "@/db";
 import { seasons } from "@/db/schema";
-import { prepaymentAmount, type Status } from "@/lib/calc";
-import { dm, dmhm, hhmm, prettyPhone, tenge } from "@/lib/format";
+import { balanceOf, BOARD, dueOf, groupBoard, left, waiting } from "@/lib/board";
+import type { Status } from "@/lib/calc";
+import { prettyPhone, tenge } from "@/lib/format";
 import { ACTIVE, STATUS_LABEL } from "@/lib/status";
 import { currentSeason } from "@/services/catalog";
 import { orderList, pendingInvoices, type OrderListRow } from "@/services/orders";
@@ -17,30 +18,7 @@ export const metadata: Metadata = { title: "Заказы" };
 const FILTERS: [string, string][] = [["active", "Активные"], ...(Object.entries(STATUS_LABEL) as [string, string][]), ["all", "Все"]];
 
 const who = (r: { company: string | null; name: string; phone?: string }) => r.company || r.name || (r.phone ? prettyPhone(r.phone) : "—");
-const balanceOf = (r: OrderListRow) => Math.max(0, r.total - r.paid);
-const dueOf = (r: OrderListRow) => Math.max(0, prepaymentAmount(r.total, r.prepaymentPct) - r.paid);
 const days = (d: Date) => Math.floor((Date.now() - d.getTime()) / 86_400_000);
-const pickupOf = (r: OrderListRow) => (r.pickupDate ? `${dm(r.pickupDate)}${r.pickupTime ? ` ${hhmm(r.pickupTime)}` : ""}` : null);
-
-// «Что ждём» column of spec §5.4
-function waiting(r: OrderListRow) {
-  const pickup = pickupOf(r);
-  switch (r.status) {
-    case "new":
-      return "ждём подтверждения";
-    case "confirmed":
-      return `предоплата ${tenge(dueOf(r))} до ${r.holdUntil ? dmhm(r.holdUntil) : "—"}`;
-    case "prepaid":
-    case "ready":
-      return [balanceOf(r) > 0 && `остаток ${tenge(balanceOf(r))}`, pickup ? `выдача ${pickup}` : "дата выдачи не задана"].filter(Boolean).join(", ");
-    case "issued":
-      return balanceOf(r) > 0 ? `остаток ${tenge(balanceOf(r))}` : "выдан";
-    case "expired":
-      return "возобновить или забыть";
-    case "cancelled":
-      return "";
-  }
-}
 
 function PayForm({ orderId, amount, label = "Оплачено" }: { orderId: string; amount: number; label?: string }) {
   return (
@@ -90,7 +68,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         Сезона нет — <Link href="/settings" className="text-accent underline">создайте его в настройках</Link>.
       </p>
     );
-  const tab = sp.tab === "money" ? "money" : "list";
+  const tab = sp.tab === "money" || sp.tab === "list" ? sp.tab : "board";
   const filter = FILTERS.some(([k]) => k === sp.status) ? sp.status! : "active";
   const statuses: Status[] = filter === "active" ? ACTIVE : filter === "all" ? [] : [filter as Status];
   const q = sp.q ?? "";
@@ -118,6 +96,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       <div className="flex rounded-xl border border-line bg-white p-1 text-sm font-semibold">
         {(
           [
+            ["board", "Доска"],
             ["list", "Список"],
             ["money", "Деньги"],
           ] as const
@@ -128,8 +107,56 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         ))}
       </div>
 
-      {tab === "list" ? <List seasonId={season.id} statuses={statuses} q={q} filter={filter} href={href} /> : <Money seasonId={season.id} />}
+      {tab === "board" ? (
+        <Board seasonId={season.id} closed={sp.closed === "1"} ready={season.settings.ready_status_enabled} href={href} />
+      ) : tab === "list" ? (
+        <List seasonId={season.id} statuses={statuses} q={q} filter={filter} href={href} />
+      ) : (
+        <Money seasonId={season.id} />
+      )}
     </div>
+  );
+}
+
+// Spec §5.4: columns side by side from lg, below that one row per status with a horizontal strip of cards
+async function Board({ seasonId, closed, ready, href }: { seasonId: string; closed: boolean; ready: boolean; href: (p: Record<string, string>) => string }) {
+  const rows = await orderList({ seasonId, statuses: closed ? [] : BOARD, q: "" });
+  const cols = groupBoard(rows, closed).filter((c) => c.status !== "ready" || ready || c.rows.length);
+  return (
+    <>
+      <div data-wide className="space-y-3 lg:flex lg:items-start lg:gap-3 lg:space-y-0 lg:overflow-x-auto lg:pb-2">
+        {cols.map((c) => (
+          <section key={c.status} aria-label={STATUS_LABEL[c.status]} className="flex gap-2 lg:min-w-60 lg:flex-1 lg:flex-col lg:rounded-2xl lg:bg-line/40 lg:p-2">
+            <header className="w-24 shrink-0 pt-1 lg:w-auto lg:px-1">
+              <h2 className="text-sm leading-tight">{STATUS_LABEL[c.status]}</h2>
+              <p className="mt-0.5 text-xs text-muted tabular-nums">
+                {c.rows.length} · {c.rows.reduce((a, r) => a + r.packs, 0)} пач.
+              </p>
+            </header>
+            <ul className="flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+              {c.rows.map((r) => (
+                <li key={r.id} className="w-52 shrink-0 snap-start lg:w-auto">
+                  <Link href={`/orders/${r.id}`} className="card block h-full p-3 text-sm">
+                    <div className="flex justify-between gap-2 text-muted tabular-nums">
+                      <span>{r.number}</span>
+                      <span>{r.packs} пач.</span>
+                    </div>
+                    <p className="truncate font-semibold">{who(r)}</p>
+                    <p className="font-semibold tabular-nums">{tenge(r.total)}</p>
+                    {waiting(r) && <p className="text-muted">{waiting(r)}</p>}
+                    {r.status === "confirmed" && r.holdUntil && <p className="font-semibold text-up">бронь: {left(r.holdUntil)}</p>}
+                  </Link>
+                </li>
+              ))}
+              {!c.rows.length && <li className="py-1 text-sm text-muted">—</li>}
+            </ul>
+          </section>
+        ))}
+      </div>
+      <Link href={href({ closed: closed ? "" : "1" })} className="inline-flex rounded-full border border-line bg-white px-3 py-1.5 text-sm">
+        {closed ? "Скрыть истёкшие и отменённые" : "Показать истёкшие и отменённые"}
+      </Link>
+    </>
   );
 }
 
