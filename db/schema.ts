@@ -155,6 +155,7 @@ export const orders = pgTable(
   {
     id: id(),
     number: text().notNull().unique(),
+    publicToken: uuid().notNull().defaultRandom().unique(), // the client's order page on the site, /o/<token>
     seasonId: uuid()
       .notNull()
       .references(() => seasons.id),
@@ -258,6 +259,8 @@ export const conversations = pgTable(
     lastMessageAt: timestamp({ withTimezone: true }),
     lastInboundAt: timestamp({ withTimezone: true }),
     unreadCount: integer().notNull().default(0),
+    prefillToken: text().unique(), // site link with the client's contacts filled in (spec §14), valid 30 days from prefillTokenAt
+    prefillTokenAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

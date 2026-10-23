@@ -111,6 +111,9 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
           <Field label="Бронь без предоплаты, дней">
             <input name="hold_days" inputMode="numeric" className="input" defaultValue={s.hold_days} />
           </Field>
+          <Field label="На сайте «мало» ниже, % плана">
+            <input name="stock_few_below_pct" inputMode="numeric" className="input" defaultValue={s.stock_few_below_pct ?? 30} />
+          </Field>
           <Field label="Проверка от, ₸">
             <input name="check_threshold_amount" inputMode="numeric" className="input" defaultValue={s.check_threshold_amount} />
           </Field>

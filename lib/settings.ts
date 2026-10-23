@@ -15,6 +15,7 @@ export type SeasonSettings = {
   issue_on_full_payment_allowed: boolean;
   price_lock_on: "prepaid" | "confirmed"; // open question 2
   client_notifications: "manual" | "auto";
+  stock_few_below_pct: number; // the site says «мало» below this % of the plan (spec §14)
 };
 
 export const DEFAULT_SETTINGS: SeasonSettings = {
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: SeasonSettings = {
   issue_on_full_payment_allowed: true,
   price_lock_on: "prepaid",
   client_notifications: "manual",
+  stock_few_below_pct: 30,
 };
 
 // "08:00–18:00" → ["08:00", "18:00"]; null if it isn't a range

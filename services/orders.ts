@@ -12,8 +12,10 @@ import {
   type Status,
   type TulipType,
 } from "@/lib/calc";
-import { almatyDay, dm, normalizePhone, tenge } from "@/lib/format";
+import { almatyDay, dm, normalizePhone, prettyPhone, tenge } from "@/lib/format";
+import { hoursFor } from "@/lib/settings";
 import { canMove, PAYABLE, STATUS_LABEL } from "@/lib/status";
+import type { OrderView } from "@/lib/templates";
 import { available, currentSeason, getSeason, lockStock, seasonRules, tulips, type Season } from "./catalog";
 
 export type Actor = { id: string; role: "owner" | "operator" };
@@ -45,9 +47,10 @@ function log(
   orderId: string,
   actor: Actor | null,
   type: (typeof orderEvents.$inferInsert)["type"],
-  extra: { fromStatus?: string | null; toStatus?: string; payload?: Record<string, unknown> } = {},
+  extra: { fromStatus?: string | null; toStatus?: string; payload?: Record<string, unknown>; actorType?: "client" } = {},
 ) {
-  return tx.insert(orderEvents).values({ orderId, type, actorType: actor ? "user" : "system", actorId: actor?.id ?? null, ...extra });
+  const { actorType = actor ? "user" : "system", ...rest } = extra;
+  return tx.insert(orderEvents).values({ orderId, type, actorType, actorId: actor?.id ?? null, ...rest });
 }
 
 async function setStatus(tx: Db, o: Order, to: Status, actor: Actor | null, set: Partial<Order> = {}, payload?: Record<string, unknown>) {
@@ -93,6 +96,7 @@ const itemRows = (d: Db, orderId: string) =>
       issuedStems: orderItems.issuedStems,
       name: products.name,
       tulipType: products.tulipType,
+      color: products.color,
       substituteName: sql<string | null>`(select name from products s where s.id = ${orderItems.substituteProductId})`,
     })
     .from(orderItems)
@@ -190,10 +194,12 @@ export type NewOrder = {
   commentClient: string;
   commentInternal: string;
   channel: Channel;
+  createdBy?: "client" | "operator"; // client = the site form (spec §14): over-stock is refused, not saved as `new`
+  prefillToken?: string | null;
 };
 
 // Spec §5.3: price by today's grid, then `new` (≥ threshold or short of stock) or `confirmed` with a hold
-export function createOrder(input: NewOrder, actor: Actor) {
+export function createOrder(input: NewOrder, actor: Actor | null) {
   return run<{ id: string; number: string; status: Status; shortages: string[] }>(async () => {
     const phone = normalizePhone(input.phone) ?? fail("Телефон: казахстанский номер, +7 и 10 цифр");
     const season = await currentSeason();
@@ -225,6 +231,8 @@ export function createOrder(input: NewOrder, actor: Actor) {
         priced.lines.map((l, i) => ({ productId: l.productId!, name: lines[i].name, qtyStems: l.qtyStems, packSize: l.packSize })),
         await available(season.id, tx),
       );
+      const byClient = input.createdBy === "client";
+      if (short.length && byClient) fail(`Не хватает: ${short.join("; ")}`);
       const status: Status = short.length || priced.subtotal >= s.check_threshold_amount ? "new" : "confirmed";
       const now = new Date();
 
@@ -254,7 +262,7 @@ export function createOrder(input: NewOrder, actor: Actor) {
           clientId: client.id,
           status,
           channel: input.channel,
-          createdBy: "operator",
+          createdBy: input.createdBy ?? "operator",
           prepaymentPct: input.pct,
           subtotal: priced.subtotal,
           total: priced.subtotal,
@@ -281,7 +289,13 @@ export function createOrder(input: NewOrder, actor: Actor) {
       );
       await log(tx, o.id, actor, "status_change", {
         toStatus: status,
-        payload: { created: true, ...(short.length && { shortages: short }), ...(status === "new" && !short.length && { threshold: s.check_threshold_amount }) },
+        ...(byClient && { actorType: "client" }),
+        payload: {
+          created: true,
+          ...(short.length && { shortages: short }),
+          ...(status === "new" && !short.length && { threshold: s.check_threshold_amount }),
+          ...(input.prefillToken && { prefill: input.prefillToken }),
+        },
       });
       return { id: o.id, number, status, shortages: short };
     });
@@ -553,6 +567,28 @@ export async function orderCard(id: string) {
     getSeason(row.orders.seasonId),
   ]);
   return { order: row.orders, client: row.clients, items, payments: pays, events, season: season!, money: money(row.orders.total, row.orders.prepaymentPct, pays) };
+}
+
+export type OrderCardData = NonNullable<Awaited<ReturnType<typeof orderCard>>>;
+
+// The order as the WhatsApp templates see it (lib/templates.ts)
+export function orderView({ order: o, client, items, season, money: m }: OrderCardData): OrderView {
+  return {
+    number: o.number,
+    lines: items.map((i) => ({ name: i.substituteName ?? i.name, qtyPacks: i.qtyPacks, packSize: i.packSize, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
+    discount: o.discountAmount,
+    total: o.total,
+    pct: o.prepaymentPct,
+    prepayment: m.prepayment,
+    prepaymentDue: m.prepaymentDue,
+    balance: m.balance,
+    phone: prettyPhone(client.phone),
+    holdUntil: o.status === "confirmed" ? o.holdUntil : null,
+    pickupDate: o.pickupDate,
+    pickupTime: o.pickupTime,
+    pickupMethod: o.pickupMethod,
+    pickupHours: hoursFor(season.settings, o.pickupDate),
+  };
 }
 
 const paidSql = sql<number>`coalesce((select sum(case when p.kind = 'refund' then -p.amount else p.amount end) from payments p where p.order_id = ${orders.id} and p.status = 'paid'), 0)::int`;

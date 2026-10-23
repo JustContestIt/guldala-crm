@@ -17,4 +17,20 @@ export const fakeProvider: MessagingProvider = {
   },
 };
 
-export const messaging = (): MessagingProvider => (process.env.WAZZUP_API_TOKEN ? wazzup : fakeProvider);
+// While WAZZUP_TEST_PHONES is set ("+7…,+7…"), only those numbers get messages; the rest fail and land in the journal as not sent
+export function testOnly(p: MessagingProvider, phones: string[]): MessagingProvider {
+  return {
+    name: p.name,
+    async send(m) {
+      if (phones.includes(`+${m.chatId}`)) return p.send(m);
+      console.log(`[messaging] → ${m.chatId}: пропущено, не тестовый номер`);
+      throw new Error("пропущено, не тестовый номер (WAZZUP_TEST_PHONES)");
+    },
+  };
+}
+
+export function messaging(): MessagingProvider {
+  const p = process.env.WAZZUP_API_TOKEN ? wazzup : fakeProvider;
+  const phones = (process.env.WAZZUP_TEST_PHONES ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return phones.length ? testOnly(p, phones) : p;
+}

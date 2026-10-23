@@ -94,7 +94,7 @@ export function Calculator(p: { products: ProductOpt[]; rules: Rule[]; settings:
 
       <section className="card space-y-2">
         <h2>Ответ клиенту</h2>
-        <Composer key={text} templates={[{ key: "quote", label: "Расчёт", text }]} />
+        <Composer key={text} templates={[{ key: "quote", label: "Расчёт", text }]} orderLink />
       </section>
     </div>
   );

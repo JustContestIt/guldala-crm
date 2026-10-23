@@ -47,7 +47,10 @@ services:
       WAZZUP_API_TOKEN: ${WAZZUP_API_TOKEN:-}
       WAZZUP_CHANNEL_ID: ${WAZZUP_CHANNEL_ID:-}
       WAZZUP_WEBHOOK_SECRET: ${WAZZUP_WEBHOOK_SECRET:-}
+      WAZZUP_TEST_PHONES: ${WAZZUP_TEST_PHONES:-}
       PUBLIC_URL: https://crm.${DOMAIN}
+      SITE_URL: https://${DOMAIN}
+      CRM_PUBLIC_SECRET: ${CRM_PUBLIC_SECRET:?set CRM_PUBLIC_SECRET in deploy/.env}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -58,8 +61,8 @@ services:
     image: guldala-site
     restart: unless-stopped
     environment:
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      CRM_URL: http://app:3001 # inside the compose network: no TLS between the two
+      CRM_PUBLIC_SECRET: ${CRM_PUBLIC_SECRET}
 
   # HTTPS with automatic Let's Encrypt certificates for DOMAIN, crm. and botanica.; Wazzup webhooks (stage E) need it
   caddy:

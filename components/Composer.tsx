@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { sendAction } from "@/app/(main)/actions";
+import { prefillLinkAction, sendAction } from "@/app/(main)/actions";
 import { ActionForm, Submit } from "./ActionForm";
 
 type Template = { key: string; label: string; text: string };
 
-// Spec §3.5: every action ends in a ready WhatsApp text — preview, edit, then send or copy
-export function Composer({ templates, phone, orderId, initial }: { templates: Template[]; phone?: string; orderId?: string; initial?: string }) {
+// Spec §3.5: every action ends in a ready WhatsApp text — preview, edit, then send or copy.
+// orderLink adds «Ссылка для заказа»: the site's order form with this phone's contacts filled in (spec §14)
+export function Composer({ templates, phone, orderId, initial, orderLink }: { templates: Template[]; phone?: string; orderId?: string; initial?: string; orderLink?: boolean }) {
   const [key, setKey] = useState(templates.find((t) => t.key === initial)?.key ?? templates[0].key);
   const [text, setText] = useState(templates.find((t) => t.key === key)!.text);
   const [copied, setCopied] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   const pick = (k: string) => {
     setKey(k);
@@ -50,6 +52,7 @@ export function Composer({ templates, phone, orderId, initial }: { templates: Te
       ) : (
         <input name="phone" type="tel" inputMode="tel" aria-label="Телефон клиента" placeholder="Телефон клиента, +7…" className="input" />
       )}
+      {linkError && <p className="text-sm text-up">{linkError}</p>}
       <div className="flex flex-wrap gap-2">
         <Submit>Отправить в WhatsApp</Submit>
         <button
@@ -69,6 +72,19 @@ export function Composer({ templates, phone, orderId, initial }: { templates: Te
         >
           {copied ? "Скопировано ✓" : "Скопировать"}
         </button>
+        {orderLink && (
+          <button
+            type="button"
+            className="btn"
+            onClick={async (e) => {
+              const r = await prefillLinkAction((e.currentTarget.form?.elements.namedItem("phone") as HTMLInputElement).value);
+              setLinkError(r.ok ? null : r.error);
+              if (r.ok) setText((t) => `${t.trimEnd()}\n\nОформить заказ на сайте: ${r.url}`);
+            }}
+          >
+            Ссылка для заказа
+          </button>
+        )}
       </div>
     </ActionForm>
   );

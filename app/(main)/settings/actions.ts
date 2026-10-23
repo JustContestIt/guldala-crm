@@ -46,6 +46,7 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
     issue_on_full_payment_allowed: fd.get("issue_on_full_payment_allowed") === "on",
     price_lock_on: oneOf(fd, "price_lock_on", ["prepaid", "confirmed"], "prepaid"),
     client_notifications: oneOf(fd, "client_notifications", ["manual", "auto"], "manual"),
+    stock_few_below_pct: int(fd, "stock_few_below_pct"),
   };
   return answer(await svc.updateSeason(id, seasonFields(fd), settings), "Сохранено");
 }

@@ -19,10 +19,9 @@ import { Field, StatusBadge } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { describeEvent } from "@/lib/events";
 import { almatyDay, dm, dmhm, hhmm, prettyPhone, tenge } from "@/lib/format";
-import { hoursFor } from "@/lib/settings";
-import { ORDER_TEMPLATES, orderText, type OrderTemplate, type OrderView } from "@/lib/templates";
+import { ORDER_TEMPLATES, orderText, type OrderTemplate } from "@/lib/templates";
 import { tulips } from "@/services/catalog";
-import { orderCard } from "@/services/orders";
+import { orderCard, orderView } from "@/services/orders";
 
 export const metadata: Metadata = { title: "Заказ" };
 
@@ -61,22 +60,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   const editable = ["new", "confirmed", "prepaid", "ready"].includes(o.status);
   const allProducts = editable ? (await tulips()).filter((p) => p.isActive) : [];
 
-  const view: OrderView = {
-    number: o.number,
-    lines: items.map((i) => ({ name: i.substituteName ?? i.name, qtyPacks: i.qtyPacks, packSize: i.packSize, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
-    discount: o.discountAmount,
-    total: o.total,
-    pct: o.prepaymentPct,
-    prepayment: m.prepayment,
-    prepaymentDue: m.prepaymentDue,
-    balance: m.balance,
-    phone: prettyPhone(client.phone),
-    holdUntil: o.status === "confirmed" ? o.holdUntil : null,
-    pickupDate: o.pickupDate,
-    pickupTime: o.pickupTime,
-    pickupMethod: o.pickupMethod,
-    pickupHours: hoursFor(s, o.pickupDate),
-  };
+  const view = orderView(card);
   const templates = (Object.keys(ORDER_TEMPLATES) as OrderTemplate[])
     .filter((k) => k !== "ready" || s.ready_status_enabled)
     .map((k) => ({ key: k, label: ORDER_TEMPLATES[k], text: orderText(k, view) }));

@@ -7,6 +7,7 @@ import { day, hm, int, oneOf, str, uuid, type FormState } from "@/lib/form";
 import { messaging } from "@/integrations/messaging";
 import { sendMessage } from "@/services/messages";
 import * as o from "@/services/orders";
+import { createPrefill } from "@/services/public";
 
 const actorOf = (u: User): o.Actor => ({ id: u.id, role: u.role });
 const reply = (r: { ok: boolean; error?: string }, ok: string): FormState => (r.ok ? (refresh(), { ok }) : { error: r.error });
@@ -137,6 +138,12 @@ export async function commentAction(_: FormState, fd: FormData): Promise<FormSta
   if (!id) return noOrder;
   await o.setInternalComment(id, str(fd, "comment", 2000));
   return (refresh(), { ok: "Сохранено" });
+}
+
+// «Ссылка для заказа» in the Composer: the site form with this client's contacts filled in
+export async function prefillLinkAction(phone: string) {
+  await requireUser();
+  return createPrefill(phone);
 }
 
 export async function sendAction(_: FormState, fd: FormData): Promise<FormState> {

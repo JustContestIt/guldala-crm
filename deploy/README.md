@@ -19,12 +19,12 @@ mkdir /opt/guldala && cd /opt/guldala
 git clone git@github-guldala-crm:JustContestIt/guldala-crm.git crm
 git clone git@github-guldala-site:JustContestIt/guldala-site.git site
 cd crm/deploy
-cp .env.example .env          # заполнить: DOMAIN, POSTGRES_PASSWORD, SESSION_SECRET, WAZZUP_* (openssl rand -hex 32)
+cp .env.example .env          # заполнить: DOMAIN, POSTGRES_PASSWORD, SESSION_SECRET, CRM_PUBLIC_SECRET, WAZZUP_* (openssl rand -hex 32)
 docker compose up -d --build  # сборка 5–10 минут; миграции применяются сами перед стартом приложения
 docker compose run --rm migrate npx tsx scripts/create-user.ts tatiana "Татьяна"
 ```
 
-`WAZZUP_CHANNEL_ID` — `channelId` активного канала из `GET https://api.wazzup24.com/v3/channels` (с тем же Bearer-ключом).
+`WAZZUP_CHANNEL_ID` — `channelId` активного канала из `GET https://api.wazzup24.com/v3/channels` (с тем же Bearer-ключом). Пока идут тесты, `WAZZUP_TEST_PHONES=+7…` — единственные номера, на которые CRM реально шлёт (заказ с сайта отправляет `booking` сам).
 
 Последняя команда печатает пароль один раз. Ей же сбрасывается забытый пароль. Дальше вход на `https://crm.DOMAIN`, создание сезона, цвета и сетка цен — в «Ещё → Сезоны».
 
@@ -60,6 +60,7 @@ git -C .. pull && git -C ../../site pull && docker compose up -d --build
 |---|---|
 | Логи CRM / сайта | `docker compose logs -f app` / `docker compose logs -f site` |
 | Логи вызовов Wazzup | `docker compose logs app \| grep wazzup` |
+| Заказы и лиды с сайта | `docker compose logs app \| grep '\[site\]'` |
 | Состояние | `docker compose ps` |
 | Бэкап прямо сейчас | `docker compose exec backup sh /backup.sh now` |
 
