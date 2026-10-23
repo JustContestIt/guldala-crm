@@ -82,3 +82,7 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
       return `Заказ ${o.number} собран и ждёт вас: ${short(o.lines)}. ${toPay(o.balance)}. Выдача ${o.pickupHours}, пос. Гулдала.`;
   }
 }
+
+// season_open: to last season's clients, by hand, one at a time (spec §5.6, §12)
+export const seasonOpenText = (year: string, took: string) =>
+  `Здравствуйте! Guldala Tulpan открыли приём заказов на 8 марта ${year}. Сейчас цена ниже — чем ближе к дате, тем дороже. В прошлом сезоне вы брали ${took}. Посчитать на этот год?`;

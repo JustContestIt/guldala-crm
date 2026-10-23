@@ -156,6 +156,43 @@ describe.skipIf(!enabled)("orders service", async () => {
     expect((await o.cancelOrder(id, "передумали", actor)).ok).toBe(false);
   });
 
+  it("issues partly by lines, then the rest with the balance (spec §5.5)", async () => {
+    // 6 packs × 30 × 200 = 36 000 ₸, prepayment 40 % = 14 400
+    const { id } = ok(await o.createOrder({ ...base, lines: [{ productId: pink, qtyPacks: 4 }, { productId: red, qtyPacks: 2 }] }, actor));
+    ok(await o.recordPayment(id, { amount: 14_400, method: "cash", paid: true, invoiceRef: "", note: "" }, actor));
+    const itemOf = async (productId: string) =>
+      (await db.select().from(s.orderItems).where(eq(s.orderItems.orderId, id))).find((i) => i.productId === productId)!;
+    const [p, r] = [await itemOf(pink), await itemOf(red)];
+
+    expect((await o.issueOrder(id, null, actor, { [p.id]: 5 })).ok).toBe(false); // more than ordered
+    expect((await o.issueOrder(id, null, actor, {})).ok).toBe(false); // nothing handed out
+    ok(await o.issueOrder(id, null, actor, { [p.id]: 3 }));
+    expect(await statusOf(id)).toBe("prepaid");
+    expect([(await itemOf(pink)).issuedStems, (await itemOf(red)).issuedStems]).toEqual([90, 0]);
+    expect((await available(seasonId)).get(pink)).toBe(3000 - 120); // the reserve still holds the whole line
+
+    // the rest is a full issue: the balance comes first
+    expect((await o.issueOrder(id, null, actor, { [p.id]: 1, [r.id]: 2 })).ok).toBe(false);
+    ok(await o.issueOrder(id, "kaspi_invoice", actor, { [p.id]: 1, [r.id]: 2 }));
+    expect(await statusOf(id)).toBe("issued");
+    const card = await o.orderCard(id);
+    expect(card!.money).toMatchObject({ paid: 36_000, paidInFull: true });
+    expect(card!.events.map((e) => e.e.payload.issued).filter(Boolean)).toEqual(["Розовый классический 3 пач."]);
+  });
+
+  it("issues a confirmed order only whole with full payment, and logs a no-show", async () => {
+    const { id } = ok(await o.createOrder({ ...base, lines: [{ productId: pink, qtyPacks: 4 }] }, actor)); // confirmed, nothing paid
+    const [item] = await db.select().from(s.orderItems).where(eq(s.orderItems.orderId, id));
+    expect(await o.issueOrder(id, "cash", actor, { [item.id]: 2 })).toEqual({ ok: false, error: "Без предоплаты заказ выдаётся только целиком, с полной оплатой" });
+    ok(await o.noShow(id, "2027-03-06", actor));
+    expect(await statusOf(id)).toBe("confirmed");
+    ok(await o.issueOrder(id, "cash", actor));
+    const card = await o.orderCard(id);
+    expect(card!.order.status).toBe("issued");
+    expect(card!.money).toMatchObject({ paid: 24_000, paidInFull: true });
+    expect(card!.events.filter((e) => e.e.type === "note").map((e) => e.e.payload)).toEqual([{ noShow: "2027-03-06" }]);
+  });
+
   it("expires a hold by itself and resumes it at today's price", async () => {
     const { id } = ok(await o.createOrder({ ...base, lines: [{ productId: red, qtyPacks: 5 }] }, actor));
     expect((await available(seasonId)).get(red)).toBe(0);

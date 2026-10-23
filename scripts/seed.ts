@@ -94,7 +94,55 @@ async function main() {
     ...shops.map(([name, company], i) => ({ phone: `+7777000000${i + 1}`, name, company, source: "import" as const })),
     { phone: "+77770000006", name: "Алия", company: "Green Studio", clientType: "landscaper" as const, source: "import" as const },
     { phone: "+77770000007", source: "inbound_message" as const },
+    { phone: "+77770000008", name: "Гульнара", company: "Розарий", source: "import" as const },
+    { phone: "+77770000009", name: "Олжас", company: "ИП Сатпаев", source: "import" as const },
   ]);
+
+  // last season, closed: who took what, for «брали в прошлом сезоне, в этом нет» (spec §5.6); 8 and 9 haven't ordered this season
+  const [past] = await db
+    .insert(s.seasons)
+    .values({
+      name: "Тюльпаны 2026",
+      ordersOpenFrom: "2025-10-20",
+      peakDate: "2026-03-08",
+      pickupFrom: "2026-03-01",
+      pickupTo: "2026-03-08",
+      status: "closed",
+      settings: { ...DEFAULT_SETTINGS, peak_hours_from: "2026-03-05" },
+      orderSeq: 3,
+    })
+    .returning();
+  const byPhone = Object.fromEntries((await db.select().from(s.clients)).map((cl) => [cl.phone, cl.id]));
+  const pastOrders: [number, [string, number][]][] = [
+    [2, [["yellow-classic", 6]]],
+    [8, [["red-classic", 10], ["white-classic", 4]]],
+    [9, [["pink-double", 4]]],
+  ];
+  for (const [k, [n, lines]] of pastOrders.entries()) {
+    const total = lines.reduce((a, [, packs]) => a + packs * 30 * 200, 0);
+    const [po] = await db
+      .insert(s.orders)
+      .values({
+        number: `T-2026-000${k + 1}`,
+        seasonId: past.id,
+        clientId: byPhone[`+7777000000${n}`],
+        status: "issued",
+        createdBy: "operator",
+        prepaymentPct: 100,
+        subtotal: total,
+        total,
+        pickupDate: "2026-03-06",
+        priceLockedAt: new Date("2026-02-01T10:00:00+05:00"),
+        issuedAt: new Date("2026-03-06T10:00:00+05:00"),
+      })
+      .returning();
+    await db
+      .insert(s.orderItems)
+      .values(lines.map(([key, packs]) => ({ orderId: po.id, productId: P[key], qtyPacks: packs, packSize: 30, qtyStems: packs * 30, unitPrice: 200, lineTotal: packs * 6000, issuedStems: packs * 30 })));
+    await db
+      .insert(s.payments)
+      .values({ orderId: po.id, kind: "prepayment", method: "kaspi_invoice", status: "paid", amount: total, paidAt: new Date("2026-02-01T10:00:00+05:00") });
+  }
 
   const order = (n: number, lines: [string, number][], extra: Partial<o.NewOrder> = {}) =>
     o.createOrder(
@@ -190,7 +238,7 @@ async function main() {
     );
   }
 
-  console.log(`seed done: login tatiana, ${ps.length} colors, 8 orders, 7 clients`);
+  console.log(`seed done: login tatiana, ${ps.length} colors, 8 orders + 3 last season, 9 clients`);
 }
 
 main()

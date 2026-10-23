@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireUser, type User } from "@/lib/auth";
 import { day, hm, int, oneOf, str, uuid, type FormState } from "@/lib/form";
 import { messaging } from "@/integrations/messaging";
+import { CLIENT_TYPES, updateClient, type ClientType } from "@/services/clients";
 import { sendMessage } from "@/services/messages";
 import * as o from "@/services/orders";
 import { createPrefill } from "@/services/public";
@@ -94,12 +95,24 @@ export async function invoiceAction(_: FormState, fd: FormData): Promise<FormSta
   return fd.get("op") === "cancel" ? reply(await o.cancelInvoice(id, actor), "Счёт отменён") : reply(await o.markInvoicePaid(id, actor), "Счёт оплачен");
 }
 
+// Full issue, or partial with packs:<itemId> fields (blank = 0) from the «Выдача» screen
 export async function issueAction(_: FormState, fd: FormData): Promise<FormState> {
   const actor = actorOf(await requireUser());
   const id = uuid(fd, "id");
   if (!id) return noOrder;
   const method = fd.get("method") ? oneOf(fd, "method", METHODS, "cash") : null;
-  return reply(await o.issueOrder(id, method, actor), "Заказ выдан");
+  const packs = fd.get("partial")
+    ? Object.fromEntries([...fd.keys()].filter((k) => k.startsWith("packs:")).map((k) => [k.slice(6), str(fd, k) ? int(fd, k) : 0]))
+    : undefined;
+  return reply(await o.issueOrder(id, method, actor, packs), packs ? "Выдача записана" : "Заказ выдан");
+}
+
+export async function noShowAction(_: FormState, fd: FormData): Promise<FormState> {
+  const actor = actorOf(await requireUser());
+  const id = uuid(fd, "id");
+  const d = day(fd, "day");
+  if (!id || !d) return noOrder;
+  return reply(await o.noShow(id, d, actor), "Записано: не приехал");
 }
 
 export async function discountAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -138,6 +151,19 @@ export async function commentAction(_: FormState, fd: FormData): Promise<FormSta
   if (!id) return noOrder;
   await o.setInternalComment(id, str(fd, "comment", 2000));
   return (refresh(), { ok: "Сохранено" });
+}
+
+export async function clientAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireUser();
+  const id = uuid(fd, "id");
+  if (!id) return { error: "Клиент не найден" };
+  const r = await updateClient(id, {
+    name: str(fd, "name", 100),
+    company: str(fd, "company", 150),
+    clientType: oneOf(fd, "clientType", Object.keys(CLIENT_TYPES) as ClientType[], "flower_shop"),
+    notes: str(fd, "notes", 2000),
+  });
+  return reply(r, "Сохранено");
 }
 
 // «Ссылка для заказа» in the Composer: the site form with this client's contacts filled in

@@ -44,7 +44,7 @@ export function Composer({ templates, phone, orderId, initial, orderLink }: { te
         aria-label="Текст сообщения"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        rows={Math.min(12, text.split("\n").length + 1)}
+        rows={Math.min(12, Math.max(text.split("\n").length + 1, Math.ceil(text.length / 35)))} // one long paragraph (season_open) gets room too
         className="input font-mono text-sm"
       />
       {phone ? (

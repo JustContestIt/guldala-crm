@@ -81,10 +81,11 @@ async function lockOrder(tx: Db, id: string) {
   return o ?? fail("Заказ не найден");
 }
 
-const itemRows = (d: Db, orderId: string) =>
+const itemRows = (d: Db, orderId: string | string[]) =>
   d
     .select({
       id: orderItems.id,
+      orderId: orderItems.orderId,
       productId: orderItems.productId,
       substituteProductId: orderItems.substituteProductId,
       substitutionNote: orderItems.substitutionNote,
@@ -101,7 +102,7 @@ const itemRows = (d: Db, orderId: string) =>
     })
     .from(orderItems)
     .innerJoin(products, eq(products.id, orderItems.productId))
-    .where(eq(orderItems.orderId, orderId))
+    .where(Array.isArray(orderId) ? inArray(orderItems.orderId, orderId) : eq(orderItems.orderId, orderId))
     .orderBy(asc(orderItems.createdAt), asc(products.sortOrder));
 
 export type ItemRow = Awaited<ReturnType<typeof itemRows>>[number];
@@ -407,11 +408,28 @@ export async function cancelInvoice(paymentId: string, actor: Actor) {
   });
 }
 
-// Full issue from the order card; the balance, if any, is taken right now (spec §9 «Выдача»)
-export const issueOrder = (orderId: string, method: PayMethod | null, actor: Actor) =>
+// Spec §5.5 «Выдача». Full: the balance, if any, is taken right now, then issued (spec §9).
+// Partial: `packs` per order line handed out now; the order keeps its status and its whole reserve.
+export const issueOrder = (orderId: string, method: PayMethod | null, actor: Actor, packs?: Record<string, number>) =>
   mutate(orderId, async (tx, o, season) => {
     if (o.status === "confirmed" && !season.settings.issue_on_full_payment_allowed) fail("Выдача без предоплаты выключена в настройках сезона");
     if (!["confirmed", "prepaid", "ready"].includes(o.status)) fail(`Заказ в статусе «${STATUS_LABEL[o.status]}» не выдать`);
+    if (packs) {
+      const now = (await itemRows(tx, o.id)).map((i) => {
+        const n = packs[i.id] ?? 0;
+        const rest = (i.qtyStems - i.issuedStems) / i.packSize;
+        if (!Number.isInteger(n) || n < 0 || n > rest) fail(`${i.substituteName ?? i.name}: можно выдать от 0 до ${rest} пач.`);
+        return { i, n };
+      });
+      if (!now.some((x) => x.n)) fail("Укажите, сколько пачек выдали");
+      // whatever is left is handed out now: that is a full issue
+      if (now.some(({ i, n }) => i.issuedStems + n * i.packSize < i.qtyStems)) {
+        if (o.status === "confirmed") fail("Без предоплаты заказ выдаётся только целиком, с полной оплатой");
+        for (const { i, n } of now.filter((x) => x.n)) await tx.update(orderItems).set({ issuedStems: i.issuedStems + n * i.packSize }).where(eq(orderItems.id, i.id));
+        await log(tx, o.id, actor, "edit", { payload: { issued: now.filter((x) => x.n).map(({ i, n }) => `${i.substituteName ?? i.name} ${n} пач.`).join(", ") } });
+        return;
+      }
+    }
     o = await reprice(tx, o, actor);
     const m = money(o.total, o.prepaymentPct, await paysOf(tx, o.id));
     if (m.balance > 0) {
@@ -425,6 +443,12 @@ export const issueOrder = (orderId: string, method: PayMethod | null, actor: Act
     }
     await tx.update(orderItems).set({ issuedStems: sql`${orderItems.qtyStems}` }).where(eq(orderItems.orderId, o.id));
     await setStatus(tx, o, "issued", actor, { issuedAt: new Date() });
+  });
+
+// «Не приехал» (spec §5.5): a line in the journal, the order stays as it is
+export const noShow = (orderId: string, day: string, actor: Actor) =>
+  mutate(orderId, async (tx, o) => {
+    await log(tx, o.id, actor, "note", { payload: { noShow: day } });
   });
 
 const EDITABLE: Status[] = ["new", "confirmed", "prepaid", "ready"];
@@ -592,10 +616,10 @@ export function orderView({ order: o, client, items, season, money: m }: OrderCa
 }
 
 const paidSql = sql<number>`coalesce((select sum(case when p.kind = 'refund' then -p.amount else p.amount end) from payments p where p.order_id = ${orders.id} and p.status = 'paid'), 0)::int`;
-const packsSql = sql<number>`coalesce((select sum(i.qty_packs) from order_items i where i.order_id = ${orders.id}), 0)::int`;
+export const packsSql = sql<number>`coalesce((select sum(i.qty_packs) from order_items i where i.order_id = ${orders.id}), 0)::int`;
 
 // Spec §5.4: by default active orders, nearest deadline first (hold, then pickup)
-export async function orderList(f: { seasonId: string; statuses: Status[]; q: string }) {
+export async function orderList(f: { seasonId: string; statuses: Status[]; q: string; pickupDate?: string }) {
   await expireHolds();
   const q = f.q.trim();
   const digits = q.replace(/\D/g, "");
@@ -609,6 +633,8 @@ export async function orderList(f: { seasonId: string; statuses: Status[]; q: st
       holdUntil: orders.holdUntil,
       pickupDate: orders.pickupDate,
       pickupTime: orders.pickupTime,
+      pickupMethod: orders.pickupMethod,
+      storageRequested: orders.storageRequested,
       paid: paidSql,
       packs: packsSql,
       name: clients.name,
@@ -621,6 +647,7 @@ export async function orderList(f: { seasonId: string; statuses: Status[]; q: st
       and(
         eq(orders.seasonId, f.seasonId),
         f.statuses.length ? inArray(orders.status, f.statuses) : undefined,
+        f.pickupDate ? eq(orders.pickupDate, f.pickupDate) : undefined,
         q
           ? or(
               ilike(orders.number, `%${q}%`),
@@ -639,6 +666,15 @@ export async function orderList(f: { seasonId: string; statuses: Status[]; q: st
 }
 
 export type OrderListRow = Awaited<ReturnType<typeof orderList>>[number];
+
+// Spec §5.5: orders to hand out on `day` with their lines, by pickup time, then number
+export async function issueList(seasonId: string, day: string, statuses: Status[], q: string) {
+  const rows = (await orderList({ seasonId, statuses, q, pickupDate: day })).sort(
+    (a, b) => (a.pickupTime ?? "99").localeCompare(b.pickupTime ?? "99") || a.number.localeCompare(b.number),
+  );
+  const items = rows.length ? await itemRows(db, rows.map((r) => r.id)) : [];
+  return rows.map((r) => ({ ...r, items: items.filter((i) => i.orderId === r.id) }));
+}
 
 // «Счета выставлены»: Kaspi invoices still awaited, oldest first
 export async function pendingInvoices(seasonId: string) {
