@@ -1,4 +1,4 @@
-# Production on one VPS (spec §15): Postgres + migrations + app + Caddy (HTTPS) + daily backup.
+# Production on one VPS (spec §15): Postgres + migrations + CRM + site + Caddy (HTTPS) + daily backup.
 # Run from this folder: docker compose up -d --build. Settings come from deploy/.env (see .env.example).
 name: guldala-crm
 
@@ -46,11 +46,22 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in deploy/.env}
       WAZZUP_API_TOKEN: ${WAZZUP_API_TOKEN:-}
       WAZZUP_CHANNEL_ID: ${WAZZUP_CHANNEL_ID:-}
+      WAZZUP_WEBHOOK_SECRET: ${WAZZUP_WEBHOOK_SECRET:-}
+      PUBLIC_URL: https://crm.${DOMAIN}
     depends_on:
       migrate:
         condition: service_completed_successfully
 
-  # HTTPS with an automatic Let's Encrypt certificate for DOMAIN; Wazzup webhooks (stage 5) need it
+  # Public site: its own repo, cloned next to crm/ (../../site from here)
+  site:
+    build: ../../site
+    image: guldala-site
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+
+  # HTTPS with automatic Let's Encrypt certificates for DOMAIN, crm. and botanica.; Wazzup webhooks (stage E) need it
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -66,6 +77,7 @@ services:
       - caddy_config:/config
     depends_on:
       - app
+      - site
 
   backup:
     image: postgres:16-alpine

@@ -22,6 +22,8 @@ async function post(path: string, body: unknown): Promise<Record<string, unknown
     const text = await res.text();
     console.log(`[wazzup] POST ${path} → ${res.status} ${text.slice(0, 300)}`);
     if (res.ok) return text ? JSON.parse(text) : {};
+    // the retry hit Wazzup's 60 s crmMessageId dedup: the first attempt was delivered, its answer got lost
+    if (attempt > 1 && res.status === 400 && /repeated_?crm_?message_?id/i.test(text)) return {};
     if (res.status >= 500 && attempt < 2) continue;
     throw new Error(`Wazzup ${res.status}: ${text.slice(0, 200)}`);
   }

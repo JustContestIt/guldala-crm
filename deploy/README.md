@@ -1,34 +1,41 @@
-# Деплой Guldala CRM
+# Деплой Guldala (CRM + сайт)
 
-Один VPS, Docker Compose (спека §15): Postgres, миграции, приложение, Caddy с HTTPS, ежедневный бэкап.
+Один VPS в Казахстане, один Docker Compose (спека §15): Postgres, миграции, CRM, сайт, Caddy с HTTPS, ежедневный бэкап.
 
 ```
-интернет ─▶ caddy :80/:443 (Let's Encrypt) ─▶ app :3001 ─▶ postgres
-                                      migrate (при старте) ─┘     └─ backup (03:00 → deploy/backups)
+интернет ─▶ caddy :80/:443 (Let's Encrypt) ─┬─ crm.DOMAIN ─────────────▶ app :3001 ─▶ postgres
+                                            └─ DOMAIN, botanica.DOMAIN ─▶ site :3000    │
+                                       migrate (при старте) ─┘   backup (03:00 → deploy/backups) ─┘
 ```
 
 ## Первый запуск
 
-Нужно: VPS с Docker и Compose v2, A-запись домена на IP сервера, открытые порты 80 и 443. Сборке Next нужна память: на VPS с 1 ГБ добавьте swap.
+Нужно: VPS с Docker и Compose v2, A-записи `DOMAIN`, `crm.DOMAIN` и `botanica.DOMAIN` на IP сервера, открытые порты 80 и 443. Сборке двух Next нужна память: при 2 ГБ RAM — swap 2 ГБ.
+
+Оба репозитория клонируются рядом: compose собирает сайт из `../../site`.
 
 ```bash
-# на сервере, в копии папки crm/
-cd deploy
-cp .env.example .env          # заполнить: DOMAIN, POSTGRES_PASSWORD, SESSION_SECRET (openssl rand -hex 32)
-docker compose up -d --build  # сборка 3–5 минут; миграции применяются сами перед стартом приложения
+mkdir ~/guldala && cd ~/guldala
+git clone git@github.com:JustContestIt/guldala-crm.git crm
+git clone git@github.com:JustContestIt/guldala-site.git site
+cd crm/deploy
+cp .env.example .env          # заполнить: DOMAIN, POSTGRES_PASSWORD, SESSION_SECRET, WAZZUP_* (openssl rand -hex 32)
+docker compose up -d --build  # сборка 5–10 минут; миграции применяются сами перед стартом приложения
 docker compose run --rm migrate npx tsx scripts/create-user.ts tatiana "Татьяна"
 ```
 
-Последняя команда печатает пароль один раз. Ей же сбрасывается забытый пароль. Дальше вход на `https://DOMAIN`, создание сезона, цвета и сетка цен — в «Ещё → Сезоны».
+Последняя команда печатает пароль один раз. Ей же сбрасывается забытый пароль. Дальше вход на `https://crm.DOMAIN`, создание сезона, цвета и сетка цен — в «Ещё → Сезоны».
 
 ## Обновление
 
 ```bash
-git pull                      # или скопировать новую версию crm/
-cd deploy && docker compose up -d --build
+cd ~/guldala/crm/deploy
+git -C .. pull && git -C ../../site pull && docker compose up -d --build
 ```
 
-Новые миграции из `db/migrations/` применятся сами до старта новой версии. Если миграция упала, новая версия приложения не запустится — смотреть `docker compose logs migrate`.
+Пересобирается и перезапускается только то, что изменилось. Новые миграции из `db/migrations/` применятся сами до старта новой версии CRM. Если миграция упала, новая версия CRM не запустится — смотреть `docker compose logs migrate`.
+
+Смена домена: новые A-записи → `DOMAIN` в `.env` → `docker compose up -d`. Caddy сам получит сертификаты. Адрес для canonical, sitemap и OG у сайта пока зашит в `site/content/site.ts`.
 
 ## Каждый день
 

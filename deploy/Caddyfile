@@ -1,4 +1,10 @@
-{$DOMAIN} {
+# The site also answers on botanica.: the site itself routes that host (stage C)
+{$DOMAIN}, botanica.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy site:3000
+}
+
+crm.{$DOMAIN} {
 	encode zstd gzip
 	reverse_proxy app:3001
 }
