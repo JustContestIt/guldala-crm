@@ -12,12 +12,12 @@
 
 Нужно: VPS с Docker и Compose v2, A-записи `DOMAIN`, `crm.DOMAIN` и `botanica.DOMAIN` на IP сервера, открытые порты 80 и 443. Сборке двух Next нужна память: при 2 ГБ RAM — swap 2 ГБ.
 
-Оба репозитория клонируются рядом: compose собирает сайт из `../../site`.
+Оба репозитория клонируются рядом: compose собирает сайт из `../../site`. Репозитории приватные — серверу по deploy-ключу на каждый (только чтение; GitHub не принимает один ключ в двух репозиториях): `ssh-keygen -t ed25519 -N "" -f ~/.ssh/guldala_crm` (и `guldala_site`), в `~/.ssh/config` — `Host github-guldala-crm` / `github-guldala-site` с `HostName github.com` и своим `IdentityFile`, публичные ключи — `gh repo deploy-key add`.
 
 ```bash
-mkdir ~/guldala && cd ~/guldala
-git clone git@github.com:JustContestIt/guldala-crm.git crm
-git clone git@github.com:JustContestIt/guldala-site.git site
+mkdir /opt/guldala && cd /opt/guldala
+git clone git@github-guldala-crm:JustContestIt/guldala-crm.git crm
+git clone git@github-guldala-site:JustContestIt/guldala-site.git site
 cd crm/deploy
 cp .env.example .env          # заполнить: DOMAIN, POSTGRES_PASSWORD, SESSION_SECRET, WAZZUP_* (openssl rand -hex 32)
 docker compose up -d --build  # сборка 5–10 минут; миграции применяются сами перед стартом приложения
@@ -28,10 +28,25 @@ docker compose run --rm migrate npx tsx scripts/create-user.ts tatiana "Тать
 
 Последняя команда печатает пароль один раз. Ей же сбрасывается забытый пароль. Дальше вход на `https://crm.DOMAIN`, создание сезона, цвета и сетка цен — в «Ещё → Сезоны».
 
+### Если 80/443 уже занимает другой Caddy в Docker
+
+Так на временном сервере (VPS Артёма: его Caddy и n8n в `/opt/stack`, сеть `stack_web`). Наш `caddy` не запускается, `app` и `site` подключаются к его сети — файл `deploy/docker-compose.override.yml` только на сервере, compose подхватывает его сам:
+
+```yaml
+services:
+  caddy: { profiles: [off] }
+  app:  { networks: { default: {}, web: { aliases: [guldala-crm] } } }
+  site: { networks: { default: {}, web: { aliases: [guldala-site] } } }
+networks:
+  web: { name: stack_web, external: true }
+```
+
+В его Caddyfile — те же три хоста, что в нашем, с прокси на `guldala-site:3000` и `guldala-crm:3001`; файл примонтирован по одному, поэтому дописывать на месте (`tee -a`), не заменять, затем `docker exec stack-caddy-1 caddy reload --config /etc/caddy/Caddyfile`.
+
 ## Обновление
 
 ```bash
-cd ~/guldala/crm/deploy
+cd /opt/guldala/crm/deploy
 git -C .. pull && git -C ../../site pull && docker compose up -d --build
 ```
 
