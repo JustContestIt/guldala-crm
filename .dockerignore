@@ -1,0 +1,9 @@
+node_modules
+.next
+*.tsbuildinfo
+next-env.d.ts
+# secrets and production data never go into the image
+.env
+.env.*
+!.env.example
+deploy

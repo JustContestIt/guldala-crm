@@ -1,0 +1,90 @@
+# Production on one VPS (spec §15): Postgres + migrations + app + Caddy (HTTPS) + daily backup.
+# Run from this folder: docker compose up -d --build. Settings come from deploy/.env (see .env.example).
+name: guldala-crm
+
+x-db-url: &db-url postgres://guldala:${POSTGRES_PASSWORD}@postgres:5432/guldala
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: guldala
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: guldala
+      TZ: Asia/Almaty
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guldala"]
+      interval: 2s
+      retries: 30
+
+  # Applies db/migrations and exits; the app starts only after it succeeded.
+  # Admin scripts run in the same image: docker compose run --rm migrate npx tsx scripts/create-user.ts …
+  migrate:
+    build:
+      context: ..
+      target: builder
+    image: guldala-crm-tools
+    command: npx tsx scripts/migrate.ts
+    environment:
+      DATABASE_URL: *db-url
+      NODE_ENV: production # makes scripts/seed.ts refuse to wipe this database
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build:
+      context: ..
+      target: runner
+    image: guldala-crm
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: *db-url
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in deploy/.env}
+      WAZZUP_API_TOKEN: ${WAZZUP_API_TOKEN:-}
+      WAZZUP_CHANNEL_ID: ${WAZZUP_CHANNEL_ID:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # HTTPS with an automatic Let's Encrypt certificate for DOMAIN; Wazzup webhooks (stage 5) need it
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    entrypoint: ["sh", "/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: guldala
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: guldala
+      TZ: Asia/Almaty
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
