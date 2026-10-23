@@ -156,6 +156,17 @@ describe.skipIf(!enabled)("orders service", async () => {
     expect((await o.cancelOrder(id, "передумали", actor)).ok).toBe(false);
   });
 
+  it("voids an open balance invoice when the balance is taken at pickup", async () => {
+    const { id } = ok(await o.createOrder({ ...base, lines: [{ productId: pink, qtyPacks: 4 }] }, actor)); // 24 000 ₸
+    ok(await o.recordPayment(id, { amount: 9_600, method: "kaspi_invoice", paid: true, invoiceRef: "", note: "" }, actor));
+    ok(await o.recordPayment(id, { amount: 14_400, method: "kaspi_invoice", paid: false, invoiceRef: "K3", note: "" }, actor)); // balance invoice sent
+    ok(await o.issueOrder(id, "cash", actor)); // …but the client paid cash at the gate
+    const pays = await db.select().from(s.payments).where(eq(s.payments.orderId, id));
+    expect(pays.find((p) => p.invoiceRef === "K3")!.status).toBe("cancelled");
+    expect((await o.markInvoicePaid(pays.find((p) => p.invoiceRef === "K3")!.id, actor)).ok).toBe(false); // can't be paid twice
+    expect((await o.orderCard(id))!.money).toMatchObject({ paid: 24_000, balance: 0 });
+  });
+
   it("issues partly by lines, then the rest with the balance (spec §5.5)", async () => {
     // 6 packs × 30 × 200 = 36 000 ₸, prepayment 40 % = 14 400
     const { id } = ok(await o.createOrder({ ...base, lines: [{ productId: pink, qtyPacks: 4 }, { productId: red, qtyPacks: 2 }] }, actor));

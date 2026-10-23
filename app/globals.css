@@ -98,3 +98,11 @@
     font-weight: 700;
   }
 }
+
+/* Horizontal strips (board rows, issue dates) scroll by swipe; no scrollbar drawn */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

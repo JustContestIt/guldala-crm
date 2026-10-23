@@ -40,14 +40,14 @@ export function Calculator(p: { products: ProductOpt[]; rules: Rule[]; settings:
 
       <div>
         <span className="label">Предоплата</span>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Предоплата">
+        <div className="flex gap-1" role="group" aria-label="Предоплата">
           {pctOptions(p.settings).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => setPct(v)}
               aria-pressed={v === pct}
-              className={`btn min-h-10 min-w-12 px-2 ${v === pct ? "btn-primary" : ""}`}
+              className={`btn min-h-10 min-w-0 flex-1 px-0 text-xs ${v === pct ? "btn-primary" : ""}`}
             >
               {v}%
             </button>

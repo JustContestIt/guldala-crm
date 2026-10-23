@@ -39,25 +39,11 @@ export function Composer({ templates, phone, orderId, initial, orderLink }: { te
       )}
       <input type="hidden" name="templateKey" value={key} />
       {orderId && <input type="hidden" name="orderId" value={orderId} />}
-      <textarea
-        name="text"
-        aria-label="Текст сообщения"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={Math.min(12, Math.max(text.split("\n").length + 1, Math.ceil(text.length / 35)))} // one long paragraph (season_open) gets room too
-        className="input font-mono text-sm"
-      />
-      {phone ? (
-        <input type="hidden" name="phone" value={phone} />
-      ) : (
-        <input name="phone" type="tel" inputMode="tel" aria-label="Телефон клиента" placeholder="Телефон клиента, +7…" className="input" />
-      )}
-      {linkError && <p className="text-sm text-up">{linkError}</p>}
-      <div className="flex flex-wrap gap-2">
-        <Submit>Отправить в WhatsApp</Submit>
+      <div className="flex items-end justify-between gap-2">
+        <span className="text-xs text-muted">Текст ответа</span>
         <button
           type="button"
-          className="btn"
+          className="btn min-h-8 px-3 text-xs"
           onClick={async (e) => {
             const form = e.currentTarget.form; // currentTarget is gone after the await
             try {
@@ -72,6 +58,24 @@ export function Composer({ templates, phone, orderId, initial, orderLink }: { te
         >
           {copied ? "Скопировано ✓" : "Скопировать"}
         </button>
+      </div>
+      <textarea
+        name="text"
+        aria-label="Текст сообщения"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={Math.min(12, Math.max(text.split("\n").length + 1, Math.ceil(text.length / 35)))} // one long paragraph (season_open) gets room too
+        className="input font-mono text-sm"
+      />
+      {phone ? (
+        <input type="hidden" name="phone" value={phone} />
+      ) : (
+        <input name="phone" type="tel" inputMode="tel" aria-label="Телефон клиента" placeholder="Телефон клиента, +7…" className="input" />
+      )}
+      {linkError && <p className="text-sm text-up">{linkError}</p>}
+      {/* two actions at most, side by side on a phone; copying lives by the text */}
+      <div className={orderLink ? "grid grid-cols-2 gap-2" : "grid"}>
+        <Submit>{orderLink ? "Отправить" : "Отправить в WhatsApp"}</Submit>
         {orderLink && (
           <button
             type="button"

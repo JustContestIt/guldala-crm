@@ -47,11 +47,14 @@ export function ActionForm({
   );
 }
 
-export function Submit({ children, className = "btn-primary", confirm }: { children: ReactNode; className?: string; confirm?: string }) {
+// name/value: one form, several one-tap choices (e.g. «Выдано · наличные» / «Выдано · Kaspi»)
+export function Submit({ children, className = "btn-primary", confirm, name, value }: { children: ReactNode; className?: string; confirm?: string; name?: string; value?: string }) {
   const pending = use(Pending);
   return (
     <button
       type="submit"
+      name={name}
+      value={value}
       disabled={pending}
       className={`btn ${className}`}
       onClick={confirm ? (e) => !window.confirm(confirm) && e.preventDefault() : undefined}

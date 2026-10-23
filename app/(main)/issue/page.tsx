@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { issueAction, noShowAction } from "@/app/(main)/actions";
 import { ActionForm, Submit } from "@/components/ActionForm";
+import { Stepper } from "@/components/Stepper";
 import { Field } from "@/components/ui";
 import { balanceOf } from "@/lib/board";
 import type { Status } from "@/lib/calc";
 import { addDays, almatyDay, dm, hhmm, prettyPhone, tenge } from "@/lib/format";
 import { currentSeason } from "@/services/catalog";
-import { issueList } from "@/services/orders";
+import { issueList, orderList } from "@/services/orders";
 
 export const metadata: Metadata = { title: "Выдача" };
 
@@ -22,9 +23,16 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
       </p>
     );
   const today = almatyDay(new Date());
-  const day = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : today;
   const q = sp.q ?? "";
   const statuses: Status[] = ["prepaid", "ready", ...(season.settings.issue_on_full_payment_allowed ? (["confirmed"] as const) : [])];
+  // no day chosen: today, or — when nobody comes today — the nearest day someone does, without an extra tap
+  const next = sp.date
+    ? undefined
+    : (await orderList({ seasonId: season.id, statuses, q: "" }))
+        .map((r) => r.pickupDate)
+        .filter((d): d is string => !!d && d >= today)
+        .sort()[0];
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : next ?? today;
   const rows = await issueList(season.id, day, statuses, q);
   const days: string[] = [];
   for (let d = season.pickupFrom; d <= season.pickupTo; d = addDays(d, 1)) days.push(d);
@@ -33,7 +41,8 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
   return (
     <div className="space-y-4">
       <h1>Выдача {dm(day)}</h1>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+      {!sp.date && day !== today && <p className="-mt-2 text-sm text-muted">Сегодня выдач нет — показан ближайший день</p>}
+      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
         {days.map((d) => (
           <Link
             key={d}
@@ -83,13 +92,18 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
               <div className="flex flex-wrap items-start gap-2">
                 <ActionForm action={issueAction} className="flex flex-wrap items-center gap-2">
                   <input type="hidden" name="id" value={r.id} />
-                  {bal > 0 && (
-                    <select name="method" aria-label="Остаток принят" className="input w-auto">
-                      <option value="cash">Наличные</option>
-                      <option value="kaspi_invoice">Kaspi</option>
-                    </select>
+                  {bal > 0 ? (
+                    <>
+                      <Submit name="method" value="cash" confirm={`Выдать ${r.number} и принять ${tenge(bal)} наличными?`}>
+                        Выдано · нал.
+                      </Submit>
+                      <Submit name="method" value="kaspi_invoice" className="" confirm={`Выдать ${r.number} и принять ${tenge(bal)} по Kaspi?`}>
+                        Выдано · Kaspi
+                      </Submit>
+                    </>
+                  ) : (
+                    <Submit confirm={`Выдать ${r.number} целиком?`}>Выдано</Submit>
                   )}
-                  <Submit confirm={`Выдать ${r.number} целиком${bal > 0 ? ` и принять ${tenge(bal)}` : ""}?`}>Выдано</Submit>
                 </ActionForm>
                 <ActionForm action={noShowAction}>
                   <input type="hidden" name="id" value={r.id} />
@@ -107,7 +121,7 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                     <input type="hidden" name="partial" value="1" />
                     {left.map((i) => (
                       <Field key={i.id} label={`${i.substituteName ?? i.name}: выдать сейчас, пач. (осталось ${(i.qtyStems - i.issuedStems) / i.packSize})`}>
-                        <input name={`packs:${i.id}`} inputMode="numeric" defaultValue="0" className="input" />
+                        <Stepper name={`packs:${i.id}`} max={(i.qtyStems - i.issuedStems) / i.packSize} label={`${i.substituteName ?? i.name}, выдать пачек`} />
                       </Field>
                     ))}
                     <Submit>Записать выдачу</Submit>

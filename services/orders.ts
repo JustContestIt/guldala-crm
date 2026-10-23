@@ -439,6 +439,13 @@ export const issueOrder = (orderId: string, method: PayMethod | null, actor: Act
         .values({ orderId: o.id, kind: "balance", method, status: "paid", amount: m.balance, paidAt: new Date(), recordedBy: actor.id, note: "при выдаче" })
         .returning();
       await log(tx, o.id, actor, "payment", { payload: { paymentId: pay.id, amount: pay.amount, method, status: "paid" } });
+      // the whole balance is taken at the gate: an invoice still open for it is void, or a late «Оплачено» pays twice
+      const voided = await tx
+        .update(payments)
+        .set({ status: "cancelled" })
+        .where(and(eq(payments.orderId, o.id), eq(payments.status, "pending")))
+        .returning({ id: payments.id, amount: payments.amount });
+      for (const v of voided) await log(tx, o.id, actor, "payment", { payload: { paymentId: v.id, amount: v.amount, status: "cancelled" } });
       o = await syncPrepaid(tx, o, actor);
     }
     await tx.update(orderItems).set({ issuedStems: sql`${orderItems.qtyStems}` }).where(eq(orderItems.orderId, o.id));

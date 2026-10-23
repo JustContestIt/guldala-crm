@@ -15,6 +15,7 @@ import {
 } from "@/app/(main)/actions";
 import { ActionForm, Submit } from "@/components/ActionForm";
 import { Composer } from "@/components/Composer";
+import { Stepper } from "@/components/Stepper";
 import { Field, StatusBadge } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { left } from "@/lib/board";
@@ -32,19 +33,18 @@ const PAY_STATUS = { pending: "ждём оплату", paid: "оплачено",
 // datetime-local value in Almaty time (UTC+5 all year)
 const localInput = (d: Date) => new Date(d.getTime() + 5 * 3_600_000).toISOString().slice(0, 16);
 
-// `open`: a card dropped on the board column of this transition lands here (?do=…, spec §5.4)
-function Panel({ title, children, danger, open }: { title: string; children: React.ReactNode; danger?: boolean; open?: boolean }) {
+function Panel({ title, children, danger }: { title: string; children: React.ReactNode; danger?: boolean }) {
   return (
-    <details className="card" open={open} id={open ? "do" : undefined}>
+    <details className="card">
       <summary className={`font-semibold ${danger ? "text-up" : ""}`}>{title}</summary>
       <div className="mt-3">{children}</div>
     </details>
   );
 }
 
-export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string; do?: string }> }) {
+export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string }> }) {
   const user = await requireUser();
-  const [{ id }, { msg, do: act }] = await Promise.all([params, searchParams]);
+  const [{ id }, { msg }] = await Promise.all([params, searchParams]);
   const card = await orderCard(id);
   if (!card) notFound();
   const { order: o, client, items, payments, events, season, money: m } = card;
@@ -70,6 +70,9 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
     </section>
   );
   const payDefault = o.status === "confirmed" && m.prepaymentDue > 0 ? m.prepaymentDue : m.balance;
+  // a Kaspi invoice already sent is the payment to close in one tap — a second record would pay twice
+  const invoice = payments.find((p) => p.status === "pending");
+  const issuable = o.status === "prepaid" || o.status === "ready";
 
   return (
     <div className="space-y-4">
@@ -191,8 +194,57 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           </ActionForm>
         )}
 
+        {o.status === "confirmed" && m.prepaymentDue > 0 &&
+          (invoice ? (
+            <ActionForm action={invoiceAction}>
+              <input type="hidden" name="paymentId" value={invoice.id} />
+              <Submit className="btn-primary w-full" confirm={`Счёт Kaspi ${tenge(invoice.amount)} оплачен?`}>
+                Счёт Kaspi {tenge(invoice.amount)} оплачен
+              </Submit>
+            </ActionForm>
+          ) : (
+            <ActionForm action={paymentAction} className="grid grid-cols-2 gap-2">
+              <input type="hidden" name="id" value={o.id} />
+              <input type="hidden" name="amount" value={m.prepaymentDue} />
+              <Submit name="method" value="kaspi_invoice" confirm={`Предоплата ${tenge(m.prepaymentDue)} по Kaspi получена?`}>
+                {tenge(m.prepaymentDue)} · Kaspi
+              </Submit>
+              <Submit name="method" value="cash" className="" confirm={`Предоплата ${tenge(m.prepaymentDue)} наличными получена?`}>
+                {tenge(m.prepaymentDue)} · наличные
+              </Submit>
+            </ActionForm>
+          ))}
+
+        {issuable && (
+          <ActionForm action={issueAction} className={m.balance > 0 ? "grid grid-cols-2 gap-2" : ""}>
+            <input type="hidden" name="id" value={o.id} />
+            {m.balance > 0 ? (
+              <>
+                <Submit name="method" value="cash" confirm={`Выдать ${o.number} и принять ${tenge(m.balance)} наличными?`}>
+                  Выдано · нал.
+                </Submit>
+                <Submit name="method" value="kaspi_invoice" className="" confirm={`Выдать ${o.number} и принять ${tenge(m.balance)} по Kaspi?`}>
+                  Выдано · Kaspi
+                </Submit>
+              </>
+            ) : (
+              <Submit className="btn-primary w-full" confirm={`Выдать ${o.number} целиком?`}>
+                Выдано
+              </Submit>
+            )}
+          </ActionForm>
+        )}
+
+        {o.status === "confirmed" && o.holdUntil && (
+          <ActionForm action={extendHoldAction}>
+            <input type="hidden" name="id" value={o.id} />
+            <input type="hidden" name="until" value={localInput(new Date(o.holdUntil.getTime() + s.hold_days * 86_400_000))} />
+            <Submit className="w-full">Продлить бронь на {s.hold_days} дн.</Submit>
+          </ActionForm>
+        )}
+
         {["confirmed", "prepaid", "ready", "issued"].includes(o.status) && m.balance > 0 && (
-          <Panel title="Отметить оплату" open={act === "pay"}>
+          <Panel title={o.status === "confirmed" || issuable ? "Другая сумма или способ оплаты" : "Отметить оплату"}>
             <ActionForm action={paymentAction} className="grid grid-cols-2 gap-3">
               <input type="hidden" name="id" value={o.id} />
               <Field label="Сумма, ₸">
@@ -221,37 +273,6 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           </Panel>
         )}
 
-        {(o.status === "prepaid" || o.status === "ready") && (
-          <Panel title="Выдать" open={act === "issue"}>
-            <ActionForm action={issueAction}>
-              <input type="hidden" name="id" value={o.id} />
-              {m.balance > 0 ? (
-                <Field label={`Принять остаток ${tenge(m.balance)}`}>
-                  <select name="method" className="input">
-                    <option value="cash">Наличные</option>
-                    <option value="kaspi_invoice">Kaspi</option>
-                  </select>
-                </Field>
-              ) : (
-                <p className="text-sm text-muted">Оплачен полностью.</p>
-              )}
-              <Submit confirm={`Выдать ${o.number} целиком?`}>Выдано</Submit>
-            </ActionForm>
-          </Panel>
-        )}
-
-        {o.status === "confirmed" && o.holdUntil && (
-          <Panel title="Продлить бронь">
-            <ActionForm action={extendHoldAction} className="flex flex-wrap items-end gap-2">
-              <input type="hidden" name="id" value={o.id} />
-              <Field label="Новый срок" className="flex-1">
-                <input name="until" type="datetime-local" defaultValue={localInput(new Date(o.holdUntil.getTime() + s.hold_days * 86_400_000))} className="input" />
-              </Field>
-              <Submit>Продлить</Submit>
-            </ActionForm>
-          </Panel>
-        )}
-
         {editable && owner && (
           <Panel title="Изменить состав">
             <ActionForm action={editItemsAction}>
@@ -259,12 +280,12 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
               {o.priceLockedAt && <p className="text-sm text-muted">Цена зафиксирована: добавленные пачки пойдут по сегодняшней сетке отдельной строкой.</p>}
               {items.map((i) => (
                 <Field key={i.id} label={`${i.substituteName ?? i.name}, пачек (0 — убрать)`}>
-                  <input name={`qty:${i.id}`} inputMode="numeric" defaultValue={i.qtyPacks} className="input" />
+                  <Stepper name={`qty:${i.id}`} defaultValue={i.qtyPacks} label={`${i.substituteName ?? i.name}, пачек`} />
                 </Field>
               ))}
               {[0, 1].map((n) => (
-                <div key={n} className="grid grid-cols-3 gap-2">
-                  <select name="addProduct" aria-label="Добавить цвет" className="input col-span-2" defaultValue="">
+                <div key={n} className="grid grid-cols-[1fr_8.5rem] gap-2">
+                  <select name="addProduct" aria-label="Добавить цвет" className="input" defaultValue="">
                     <option value="">+ добавить цвет</option>
                     {allProducts.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -272,7 +293,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                       </option>
                     ))}
                   </select>
-                  <input name="addPacks" inputMode="numeric" aria-label="Пачек" placeholder="пач." className="input" />
+                  <Stepper name="addPacks" label="Пачек нового цвета" />
                 </div>
               ))}
               <Submit>Сохранить состав</Submit>
@@ -324,7 +345,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         )}
 
         {["new", "confirmed", "prepaid", "ready"].includes(o.status) && (
-          <Panel title="Отменить заказ" danger open={act === "cancel"}>
+          <Panel title="Отменить заказ" danger>
             <ActionForm action={cancelAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="id" value={o.id} />
               <Field label="Причина" className="flex-1">
