@@ -32,18 +32,19 @@ const PAY_STATUS = { pending: "ждём оплату", paid: "оплачено",
 // datetime-local value in Almaty time (UTC+5 all year)
 const localInput = (d: Date) => new Date(d.getTime() + 5 * 3_600_000).toISOString().slice(0, 16);
 
-function Panel({ title, children, danger }: { title: string; children: React.ReactNode; danger?: boolean }) {
+// `open`: a card dropped on the board column of this transition lands here (?do=…, spec §5.4)
+function Panel({ title, children, danger, open }: { title: string; children: React.ReactNode; danger?: boolean; open?: boolean }) {
   return (
-    <details className="card">
+    <details className="card" open={open} id={open ? "do" : undefined}>
       <summary className={`font-semibold ${danger ? "text-up" : ""}`}>{title}</summary>
       <div className="mt-3">{children}</div>
     </details>
   );
 }
 
-export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string }> }) {
+export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string; do?: string }> }) {
   const user = await requireUser();
-  const [{ id }, { msg }] = await Promise.all([params, searchParams]);
+  const [{ id }, { msg, do: act }] = await Promise.all([params, searchParams]);
   const card = await orderCard(id);
   if (!card) notFound();
   const { order: o, client, items, payments, events, season, money: m } = card;
@@ -191,7 +192,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         )}
 
         {["confirmed", "prepaid", "ready", "issued"].includes(o.status) && m.balance > 0 && (
-          <Panel title="Отметить оплату">
+          <Panel title="Отметить оплату" open={act === "pay"}>
             <ActionForm action={paymentAction} className="grid grid-cols-2 gap-3">
               <input type="hidden" name="id" value={o.id} />
               <Field label="Сумма, ₸">
@@ -221,7 +222,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         )}
 
         {(o.status === "prepaid" || o.status === "ready") && (
-          <Panel title="Выдать">
+          <Panel title="Выдать" open={act === "issue"}>
             <ActionForm action={issueAction}>
               <input type="hidden" name="id" value={o.id} />
               {m.balance > 0 ? (
@@ -323,7 +324,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         )}
 
         {["new", "confirmed", "prepaid", "ready"].includes(o.status) && (
-          <Panel title="Отменить заказ" danger>
+          <Panel title="Отменить заказ" danger open={act === "cancel"}>
             <ActionForm action={cancelAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="id" value={o.id} />
               <Field label="Причина" className="flex-1">

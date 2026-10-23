@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { invoiceAction, paymentAction } from "@/app/(main)/actions";
 import { ActionForm, Submit } from "@/components/ActionForm";
+import { DragBoard } from "@/components/DragBoard";
 import { StatusBadge } from "@/components/ui";
 import { db } from "@/db";
 import { seasons } from "@/db/schema";
@@ -124,35 +125,37 @@ async function Board({ seasonId, closed, ready, href }: { seasonId: string; clos
   const cols = groupBoard(rows, closed).filter((c) => c.status !== "ready" || ready || c.rows.length);
   return (
     <>
-      <div data-wide className="space-y-3 lg:flex lg:items-start lg:gap-3 lg:space-y-0 lg:overflow-x-auto lg:pb-2">
-        {cols.map((c) => (
-          <section key={c.status} aria-label={STATUS_LABEL[c.status]} className="flex gap-2 lg:min-w-60 lg:flex-1 lg:flex-col lg:rounded-2xl lg:bg-line/40 lg:p-2">
-            <header className="w-24 shrink-0 pt-1 lg:w-auto lg:px-1">
-              <h2 className="text-sm leading-tight">{STATUS_LABEL[c.status]}</h2>
-              <p className="mt-0.5 text-xs text-muted tabular-nums">
-                {c.rows.length} · {c.rows.reduce((a, r) => a + r.packs, 0)} пач.
-              </p>
-            </header>
-            <ul className="flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
-              {c.rows.map((r) => (
-                <li key={r.id} className="w-52 shrink-0 snap-start lg:w-auto">
-                  <Link href={`/orders/${r.id}`} className="card block h-full p-3 text-sm">
-                    <div className="flex justify-between gap-2 text-muted tabular-nums">
-                      <span>{r.number}</span>
-                      <span>{r.packs} пач.</span>
-                    </div>
-                    <p className="truncate font-semibold">{who(r)}</p>
-                    <p className="font-semibold tabular-nums">{tenge(r.total)}</p>
-                    {waiting(r) && <p className="text-muted">{waiting(r)}</p>}
-                    {r.status === "confirmed" && r.holdUntil && <p className="font-semibold text-up">бронь: {left(r.holdUntil)}</p>}
-                  </Link>
-                </li>
-              ))}
-              {!c.rows.length && <li className="py-1 text-sm text-muted">—</li>}
-            </ul>
-          </section>
-        ))}
-      </div>
+      <DragBoard ready={ready}>
+        <div data-wide className="space-y-3 lg:flex lg:items-start lg:gap-3 lg:space-y-0 lg:overflow-x-auto lg:pb-2">
+          {cols.map((c) => (
+            <section key={c.status} aria-label={STATUS_LABEL[c.status]} data-col={c.status} className="flex gap-2 lg:min-w-60 lg:flex-1 lg:flex-col lg:rounded-2xl lg:bg-line/40 lg:p-2 lg:data-[drop]:outline-2 lg:data-[drop]:outline-accent lg:data-[drop]:outline-dashed">
+              <header className="w-24 shrink-0 pt-1 lg:w-auto lg:px-1">
+                <h2 className="text-sm leading-tight">{STATUS_LABEL[c.status]}</h2>
+                <p className="mt-0.5 text-xs text-muted tabular-nums">
+                  {c.rows.length} · {c.rows.reduce((a, r) => a + r.packs, 0)} пач.
+                </p>
+              </header>
+              <ul className="flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+                {c.rows.map((r) => (
+                  <li key={r.id} data-card={r.id} data-status={r.status} draggable className="w-52 shrink-0 snap-start lg:w-auto">
+                    <Link href={`/orders/${r.id}`} className="card block h-full p-3 text-sm">
+                      <div className="flex justify-between gap-2 text-muted tabular-nums">
+                        <span>{r.number}</span>
+                        <span>{r.packs} пач.</span>
+                      </div>
+                      <p className="truncate font-semibold">{who(r)}</p>
+                      <p className="font-semibold tabular-nums">{tenge(r.total)}</p>
+                      {waiting(r) && <p className="text-muted">{waiting(r)}</p>}
+                      {r.status === "confirmed" && r.holdUntil && <p className="font-semibold text-up">бронь: {left(r.holdUntil)}</p>}
+                    </Link>
+                  </li>
+                ))}
+                {!c.rows.length && <li className="py-1 text-sm text-muted">—</li>}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </DragBoard>
       <Link href={href({ closed: closed ? "" : "1" })} className="inline-flex rounded-full border border-line bg-white px-3 py-1.5 text-sm">
         {closed ? "Скрыть истёкшие и отменённые" : "Показать истёкшие и отменённые"}
       </Link>
