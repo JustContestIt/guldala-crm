@@ -24,6 +24,8 @@ docker compose up -d --build  # сборка 5–10 минут; миграции
 docker compose run --rm migrate npx tsx scripts/create-user.ts tatiana "Татьяна"
 ```
 
+`WAZZUP_CHANNEL_ID` — `channelId` активного канала из `GET https://api.wazzup24.com/v3/channels` (с тем же Bearer-ключом).
+
 Последняя команда печатает пароль один раз. Ей же сбрасывается забытый пароль. Дальше вход на `https://crm.DOMAIN`, создание сезона, цвета и сетка цен — в «Ещё → Сезоны».
 
 ## Обновление
@@ -41,7 +43,7 @@ git -C .. pull && git -C ../../site pull && docker compose up -d --build
 
 | Что | Команда |
 |---|---|
-| Логи приложения | `docker compose logs -f app` |
+| Логи CRM / сайта | `docker compose logs -f app` / `docker compose logs -f site` |
 | Логи вызовов Wazzup | `docker compose logs app \| grep wazzup` |
 | Состояние | `docker compose ps` |
 | Бэкап прямо сейчас | `docker compose exec backup sh /backup.sh now` |
@@ -65,8 +67,8 @@ docker compose start app
 | Файл | Зачем |
 |---|---|
 | `../Dockerfile` | `builder` — сборка и инструменты (миграции, `create-user`); `runner` — только standalone-сервер Next |
-| `docker-compose.yml` | Все службы. База наружу не открыта, приложение — только через Caddy |
-| `Caddyfile` | HTTPS для `DOMAIN` и прокси на приложение |
+| `docker-compose.yml` | Все службы. База наружу не открыта, CRM и сайт — только через Caddy |
+| `Caddyfile` | HTTPS для `DOMAIN`, `crm.` и `botanica.`; прокси на сайт и CRM |
 | `backup.sh` | Ежедневный `pg_dump` и чистка старше 30 дней |
 | `.env` | Секреты. Не коммитится и не попадает в образ |
 
