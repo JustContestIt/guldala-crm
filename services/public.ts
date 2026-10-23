@@ -160,7 +160,7 @@ export async function createPrefill(phone: string) {
   if (!p) return { ok: false as const, error: PHONE_ERROR };
   const token = crypto.randomUUID();
   await whatsappConversation(p, { prefillToken: token, prefillTokenAt: new Date() });
-  return { ok: true as const, url: `${process.env.SITE_URL ?? ""}/tulpan/zakaz?c=${token}` };
+  return { ok: true as const, url: `${process.env.SITE_URL ?? ""}/tulpan/sorta?c=${token}` };
 }
 
 // GET /public/prefill/{token}: contacts for the site's form; null = unknown or older than 30 days

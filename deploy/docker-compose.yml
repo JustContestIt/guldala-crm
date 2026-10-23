@@ -57,10 +57,14 @@ services:
 
   # Public site: its own repo, cloned next to crm/ (../../site from here)
   site:
-    build: ../../site
+    build:
+      context: ../../site
+      args:
+        SITE_URL: https://${DOMAIN}
     image: guldala-site
     restart: unless-stopped
     environment:
+      SITE_URL: https://${DOMAIN}
       CRM_URL: http://app:3001 # inside the compose network: no TLS between the two
       CRM_PUBLIC_SECRET: ${CRM_PUBLIC_SECRET}
 
