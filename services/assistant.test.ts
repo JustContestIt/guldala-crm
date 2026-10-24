@@ -154,6 +154,16 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     expect(client).toMatchObject({ name: "Айгуль", company: "Цветы на Абая" });
   });
 
+  it("«не знаю, что выбрать» → order_link: the catalog link with this client's contacts", async () => {
+    vi.stubEnv("SITE_URL", "https://guldala.kz");
+    const m = script([{ name: "order_link", args: {} }], "Вот каталог с фото: ...");
+    await say("Не знаю, какие цвета взять", m.model);
+    const [out] = m.outputs(1);
+    expect(out.url).toMatch(/^https:\/\/guldala\.kz\/tulpan\/sorta\?c=[0-9a-f-]{36}$/);
+    const { prefill } = await import("./public");
+    expect(await prefill(out.url.split("c=")[1])).toMatchObject({ client: { phone: `+${PHONE}` } });
+  });
+
   it("in draft mode keeps the answer for Tatiana and offers no create_order", async () => {
     await setMode("draft");
     const m = script("Здравствуйте! Сколько пачек нужно?");
