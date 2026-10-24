@@ -5,6 +5,7 @@ import { appState, clients, conversations, messages, orderEvents } from "@/db/sc
 import { normalizePhone } from "@/lib/format";
 import { chatAllowed, messaging, type InMessage, type MessagingProvider, type Webhook } from "@/integrations/messaging";
 import type { Actor } from "./orders";
+import { saveState } from "./settings";
 
 export type SendInput = { phone: string; text: string; templateKey: string | null; orderId?: string | null };
 
@@ -92,12 +93,6 @@ export async function setAssistantMuted(conversationId: string, muted: boolean) 
 }
 
 // ——— webhooks (spec §12) ———
-
-const saveState = (key: string, value: Record<string, unknown>) =>
-  db
-    .insert(appState)
-    .values({ key, value })
-    .onConflictDoUpdate({ target: appState.key, set: { value: sql`${appState.value} || excluded.value`, updatedAt: new Date() } });
 
 // A new message from a client: what the assistant answers
 export type Inbound = { id: string; conversationId: string; clientId: string; chatId: string; type: string };

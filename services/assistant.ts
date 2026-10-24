@@ -7,7 +7,7 @@ import type { ResponseInputItem } from "openai/resources/responses/responses";
 import { db } from "@/db";
 import { clients, conversations, messages, orders } from "@/db/schema";
 import { chatAllowed, messaging, type MessagingProvider } from "@/integrations/messaging";
-import { respond, type Model, type Tool } from "@/integrations/openai";
+import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORTS, respond, type Effort, type Model, type Tool } from "@/integrations/openai";
 import type { TulipType } from "@/lib/calc";
 import { almatyDay, dmhm, prettyPhone, tenge } from "@/lib/format";
 import { num, obj, str } from "@/lib/json";
@@ -16,10 +16,14 @@ import { STATUS_LABEL } from "@/lib/status";
 import { currentSeason, productOpts, seasonRules, tulips, type Season } from "./catalog";
 import { sendDraft, type Inbound } from "./messages";
 import { createPrefill, createSiteOrder, seasonCurrent, SITE_PCTS } from "./public";
+import { readState, saveState } from "./settings";
 
 const SETTLE_MS = 5_000; // clients send two or three messages in a row: one answer to all of them
 const MAX_STEPS = 6;
 const ANSWERED = ["text", "image", "audio", "video", "document"]; // a client writing; calls and system notes get no answer
+
+export const MODES = ["off", "draft", "auto"] as const;
+export type AssistantSettings = { mode: (typeof MODES)[number]; model: string; effort: Effort };
 
 type Ctx = { season: Season; mode: "draft" | "auto"; clientId: string; conversationId: string; phone: string; acted: boolean };
 type Args = Record<string, unknown>;
@@ -152,7 +156,7 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
     const pickupTime = str(a.pickupTime, 5);
     const legalType = a.legalType === "too" ? "too" : "ip";
     const bin = str(a.bin, 20).replace(/\D/g, "");
-    const orgName = str(a.orgName, 150);
+    const orgName = str(a.orgName, 150).replace(/^ТОО\s*/i, "").replace(/^[«"“]+|[»"”]+$/g, ""); // the comment adds «ТОО «…»» itself
     const missing = [
       !cl.name && "имя (сохрани через update_client)",
       !cl.company && "магазин (сохрани через update_client)",
@@ -222,7 +226,7 @@ async function tool(name: string, args: string, c: Ctx) {
 
 // ——— the prompt: rules and knowledge from assistant/*.md, then the season's numbers; the same on every call ———
 
-const read = (f: string) => readFileSync(path.join(process.cwd(), "assistant", f), "utf8");
+export const promptFile = (f: "restrictions.md" | "knowledge.md") => readFileSync(path.join(process.cwd(), "assistant", f), "utf8");
 
 function instructions(season: Season) {
   const s = season.settings;
@@ -234,7 +238,7 @@ function instructions(season: Season) {
     `- Заказ от ${tenge(s.check_threshold_amount)} Татьяна проверяет и подтверждает сама.`,
     `- Пик — ${season.peakDate}. Выдача с ${season.pickupFrom} по ${season.pickupTo}, ${s.pickup_hours}${s.peak_hours_from ? `; с ${s.peak_hours_from} — ${s.pickup_hours_peak}` : ""}.`,
   ];
-  return [read("restrictions.md"), read("knowledge.md"), facts.join("\n")].join("\n\n");
+  return [promptFile("restrictions.md"), promptFile("knowledge.md"), facts.join("\n")].join("\n\n");
 }
 
 // What changes from chat to chat goes first in the input, after the cached instructions
@@ -296,8 +300,8 @@ async function answer(text: string, m: Inbound, c: Ctx, provider: MessagingProvi
 // Silent when the season's mode is off, the chat is muted, there is no OPENAI_API_KEY or the number isn't a test one.
 export async function replyTo(m: Inbound, deps: { model?: Model; provider?: MessagingProvider; settleMs?: number } = {}) {
   const { model = respond, provider = messaging(), settleMs = SETTLE_MS } = deps;
-  const season = await currentSeason();
-  const mode = season?.settings.assistant_mode ?? "off";
+  const [a, season] = await Promise.all([assistantSettings(), currentSeason()]);
+  const mode = a.mode;
   if (!season || mode === "off" || !process.env.OPENAI_API_KEY || !chatAllowed(m.chatId) || !ANSWERED.includes(m.type)) return;
   await new Promise((r) => setTimeout(r, settleMs));
   if (await stale(m)) return;
@@ -307,7 +311,7 @@ export async function replyTo(m: Inbound, deps: { model?: Model; provider?: Mess
     const tools = TOOLS.filter((t) => mode === "auto" || t.name !== "create_order");
     const input: ResponseInputItem[] = [{ role: "developer", content: await context(c) }, ...(await history(m.conversationId))];
     for (let step = 0; step < MAX_STEPS; step++) {
-      const r = await model({ instructions: prompt, input, tools });
+      const r = await model({ model: a.model, effort: a.effort, instructions: prompt, input, tools });
       input.push(...r.items);
       if (!r.calls.length) return await answer(r.text, m, c, provider);
       for (const call of r.calls) input.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(await tool(call.name, call.arguments, c)) });
@@ -316,4 +320,28 @@ export async function replyTo(m: Inbound, deps: { model?: Model; provider?: Mess
   } catch (e) {
     console.error(`[assistant] failed, conversation ${m.conversationId}:`, e);
   }
+}
+
+// «Ещё → Ассистент»: off / draft / auto, the model and its reasoning effort (app_state "assistant")
+export async function assistantSettings(): Promise<AssistantSettings> {
+  const v = await readState("assistant");
+  return {
+    mode: MODES.find((x) => x === v.mode) ?? "off",
+    model: str(v.model, 100) || DEFAULT_MODEL,
+    effort: EFFORTS.find((x) => x === v.effort) ?? DEFAULT_EFFORT,
+  };
+}
+
+// Saving asks the model one short question: a model or an effort OpenAI refuses would otherwise leave the bot silent unseen
+export async function saveAssistantSettings(s: AssistantSettings, model: Model = respond) {
+  if (!/^[\w.:-]{2,100}$/.test(s.model)) return { ok: false as const, error: "Модель — название из списка OpenAI" };
+  if (process.env.OPENAI_API_KEY)
+    try {
+      await model({ model: s.model, effort: s.effort, instructions: "Ответь одним словом.", input: [{ role: "user", content: "Проверка связи" }], tools: [] });
+    } catch (e) {
+      return { ok: false as const, error: `OpenAI не принял ${s.model}${s.effort ? ` с размышлением «${s.effort}»` : ""}: ${e instanceof Error ? e.message : e}` };
+    }
+  else if (s.mode !== "off") return { ok: false as const, error: "Нет OPENAI_API_KEY — ассистент не сможет отвечать" };
+  await saveState("assistant", s);
+  return { ok: true as const, checked: !!process.env.OPENAI_API_KEY };
 }

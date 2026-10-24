@@ -138,13 +138,6 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
               <option value="auto">автоматически</option>
             </select>
           </Field>
-          <Field label="Ассистент в WhatsApp" className="col-span-2">
-            <select name="assistant_mode" className="input" defaultValue={s.assistant_mode ?? "off"}>
-              <option value="off">выключен</option>
-              <option value="draft">черновики — отправляет Татьяна</option>
-              <option value="auto">отвечает сам</option>
-            </select>
-          </Field>
           <label className="col-span-2 flex items-center gap-2 text-sm">
             <input type="checkbox" name="ready_status_enabled" defaultChecked={s.ready_status_enabled} className="size-5" />
             Статус «Готов к выдаче»

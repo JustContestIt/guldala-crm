@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeProvider, type MessagingProvider } from "@/integrations/messaging";
 import type { Model, ModelRequest } from "@/integrations/openai";
 import { handleWebhook } from "@/integrations/wazzup";
-import { DEFAULT_SETTINGS, type SeasonSettings } from "@/lib/settings";
+import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
 const CH = "channel-test";
@@ -48,7 +48,8 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
   const { db } = await import("@/db");
   const s = await import("@/db/schema");
   const { receiveWebhook } = await import("./messages");
-  const { replyTo } = await import("./assistant");
+  const { assistantSettings, replyTo, saveAssistantSettings } = await import("./assistant");
+  const { saveState } = await import("./settings");
 
   const sent: string[] = [];
   const provider: MessagingProvider = { ...fakeProvider, send: async (m) => (sent.push(m.text), { messageId: `w-out-${sent.length}` }) };
@@ -59,8 +60,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     for (const m of fresh) await replyTo(m, { model, provider, settleMs: 0 });
     return fresh;
   }
-  const setMode = (mode: SeasonSettings["assistant_mode"]) =>
-    db.update(s.seasons).set({ settings: { ...DEFAULT_SETTINGS, peak_hours_from: "2027-03-05", assistant_mode: mode } });
+  const setMode = (mode: "off" | "draft" | "auto") => saveState("assistant", { mode, model: "test-model", effort: "" });
   const conversation = async () => (await db.select().from(s.conversations))[0];
 
   beforeEach(async () => {
@@ -80,7 +80,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
         pickupFrom: "2027-03-01",
         pickupTo: "2027-03-08",
         status: "open",
-        settings: { ...DEFAULT_SETTINGS, peak_hours_from: "2027-03-05", assistant_mode: "auto" },
+        settings: { ...DEFAULT_SETTINGS, peak_hours_from: "2027-03-05" },
       })
       .returning();
     const ps = await db
@@ -96,6 +96,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
       { seasonId: season.id, tulipType: "classic", dateFrom: "2026-01-01", dateTo: "2027-01-31", prepaymentMinPct: 100, prepaymentMaxPct: 100, pricePerStem: 180 },
       { seasonId: season.id, tulipType: "classic", dateFrom: "2027-02-01", dateTo: "2027-03-08", prepaymentMinPct: 40, prepaymentMaxPct: 100, pricePerStem: 250 },
     ]);
+    await setMode("auto");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -123,6 +124,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
       { color: "Розовый классический", stock: "много" },
     ]);
     expect(JSON.stringify(out.colors)).not.toMatch(/\d/);
+    expect(m.asked[0]).toMatchObject({ model: "test-model", effort: "" }); // what «Ещё → Ассистент» saved
     expect(out.pricePerStemToday.classic).toMatchObject({ "40%": 200, "100%": 180, until: "2027-01-31" });
     expect(sent).toEqual(["Красных много."]);
   });
@@ -195,5 +197,20 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     vi.stubEnv("OPENAI_API_KEY", "test");
     await say("ау?", m.model);
     expect(m.asked).toHaveLength(1);
+  });
+
+  it("saves the assistant's settings only after the model answers the check", async () => {
+    const refusing: Model = async () => {
+      throw new Error("400 Unsupported parameter: 'reasoning.effort'");
+    };
+    const bad = await saveAssistantSettings({ mode: "auto", model: "gpt-4o", effort: "low" }, refusing);
+    expect(bad).toMatchObject({ ok: false });
+    expect(!bad.ok && bad.error).toMatch(/gpt-4o с размышлением «low»: 400 Unsupported/);
+    expect(await assistantSettings()).toMatchObject({ model: "test-model" }); // unchanged
+
+    const checked = script("ок");
+    expect(await saveAssistantSettings({ mode: "draft", model: "gpt-6-luna", effort: "none" }, checked.model)).toMatchObject({ ok: true, checked: true });
+    expect(checked.asked[0]).toMatchObject({ model: "gpt-6-luna", effort: "none", tools: [] });
+    expect(await assistantSettings()).toEqual({ mode: "draft", model: "gpt-6-luna", effort: "none" });
   });
 });

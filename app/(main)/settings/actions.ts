@@ -7,6 +7,8 @@ import { day, int, oneOf, prefixed, str, uuid, type FormState } from "@/lib/form
 import { fromForm, TYPES } from "@/lib/grid";
 import type { SeasonSettings } from "@/lib/settings";
 import { CHANNEL_STATE } from "@/integrations/messaging";
+import { EFFORTS } from "@/integrations/openai";
+import { MODES, saveAssistantSettings } from "@/services/assistant";
 import { connectChannel } from "@/services/messages";
 import * as svc from "@/services/settings";
 
@@ -49,7 +51,6 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
     price_lock_on: oneOf(fd, "price_lock_on", ["prepaid", "confirmed"], "prepaid"),
     client_notifications: oneOf(fd, "client_notifications", ["manual", "auto"], "manual"),
     stock_few_below_pct: int(fd, "stock_few_below_pct"),
-    assistant_mode: oneOf(fd, "assistant_mode", ["off", "draft", "auto"], "off"),
   };
   return answer(await svc.updateSeason(id, seasonFields(fd), settings), "Сохранено");
 }
@@ -104,4 +105,12 @@ export async function connectWhatsappAction(): Promise<FormState> {
   await requireOwner();
   const r = await connectChannel();
   return r.ok ? done(`Вебхуки подписаны. Канал: ${CHANNEL_STATE[r.state] ?? r.state}`) : (refresh(), { error: r.error });
+}
+
+// «Ещё → Ассистент»: saved only after the chosen model answered a short question
+export async function assistantAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireOwner();
+  const r = await saveAssistantSettings({ mode: oneOf(fd, "mode", MODES, "off"), model: str(fd, "model", 100), effort: oneOf(fd, "effort", EFFORTS, "") });
+  if (!r.ok) return { error: r.error };
+  return done(r.checked ? "Сохранено: модель ответила на проверку" : "Сохранено (ключа OpenAI нет — модель не проверялась)");
 }

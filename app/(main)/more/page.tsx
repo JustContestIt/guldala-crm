@@ -33,6 +33,11 @@ export default async function MorePage() {
                 WhatsApp
               </Link>
             </li>
+            <li>
+              <Link href="/settings/assistant" className="block px-4 py-3 font-medium">
+                Ассистент
+              </Link>
+            </li>
           </>
         )}
       </ul>
