@@ -93,6 +93,9 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           <a href={`https://wa.me/${client.phone.slice(1)}`} target="_blank" rel="noopener noreferrer" className="text-accent underline">
             WhatsApp
           </a>
+          <Link href={`/clients/${client.id}#chat`} className="text-accent underline">
+            Переписка
+          </Link>
         </p>
       </header>
 

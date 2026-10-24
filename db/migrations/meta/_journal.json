@@ -15,6 +15,13 @@
       "when": 1792760879808,
       "tag": "0001_broad_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792831652047,
+      "tag": "0002_stage_e",
+      "breakpoints": true
     }
   ]
 }

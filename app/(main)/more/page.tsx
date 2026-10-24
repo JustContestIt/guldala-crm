@@ -28,6 +28,11 @@ export default async function MorePage() {
                 Цвета
               </Link>
             </li>
+            <li>
+              <Link href="/settings/whatsapp" className="block px-4 py-3 font-medium">
+                WhatsApp
+              </Link>
+            </li>
           </>
         )}
       </ul>

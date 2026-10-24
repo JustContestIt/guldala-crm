@@ -6,6 +6,8 @@ import { requireOwner } from "@/lib/auth";
 import { day, int, oneOf, prefixed, str, uuid, type FormState } from "@/lib/form";
 import { fromForm, TYPES } from "@/lib/grid";
 import type { SeasonSettings } from "@/lib/settings";
+import { CHANNEL_STATE } from "@/integrations/messaging";
+import { connectChannel } from "@/services/messages";
 import * as svc from "@/services/settings";
 
 const done = (ok: string): FormState => (refresh(), { ok });
@@ -47,6 +49,7 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
     price_lock_on: oneOf(fd, "price_lock_on", ["prepaid", "confirmed"], "prepaid"),
     client_notifications: oneOf(fd, "client_notifications", ["manual", "auto"], "manual"),
     stock_few_below_pct: int(fd, "stock_few_below_pct"),
+    assistant_mode: oneOf(fd, "assistant_mode", ["off", "draft", "auto"], "off"),
   };
   return answer(await svc.updateSeason(id, seasonFields(fd), settings), "Сохранено");
 }
@@ -94,4 +97,11 @@ export async function saveProductAction(_: FormState, fd: FormData): Promise<For
     sortOrder: int(fd, "sortOrder"),
   });
   return answer(r, "Сохранено");
+}
+
+// «Настройки → WhatsApp»: subscribe Wazzup's webhooks to this CRM and read the channel state
+export async function connectWhatsappAction(): Promise<FormState> {
+  await requireOwner();
+  const r = await connectChannel();
+  return r.ok ? done(`Вебхуки подписаны. Канал: ${CHANNEL_STATE[r.state] ?? r.state}`) : (refresh(), { error: r.error });
 }

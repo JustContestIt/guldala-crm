@@ -6,7 +6,7 @@ import { requireUser, type User } from "@/lib/auth";
 import { day, hm, int, oneOf, str, uuid, type FormState } from "@/lib/form";
 import { messaging } from "@/integrations/messaging";
 import { CLIENT_TYPES, updateClient, type ClientType } from "@/services/clients";
-import { sendMessage } from "@/services/messages";
+import { deleteDraft, sendDraft, sendMessage, setAssistantMuted } from "@/services/messages";
 import * as o from "@/services/orders";
 import { createPrefill } from "@/services/public";
 
@@ -181,4 +181,26 @@ export async function sendAction(_: FormState, fd: FormData): Promise<FormState>
   if (!r.ok) return { error: r.error };
   refresh();
   return { ok: messaging().name === "fake" ? "Тестовый режим: Wazzup не подключён, сообщение только записано в журнал" : "Отправлено" };
+}
+
+// The assistant's draft in the client card: «Отправить» (as corrected in the field) or «Удалить» (spec §19)
+export async function draftAction(_: FormState, fd: FormData): Promise<FormState> {
+  const actor = actorOf(await requireUser());
+  const id = uuid(fd, "id");
+  if (!id) return { error: "Черновик не найден" };
+  if (fd.get("op") === "delete") return reply(await deleteDraft(id), "Черновик удалён");
+  const r = await sendDraft(id, str(fd, "text", 4000), actor);
+  refresh(); // a failed send shows in the dialog as «не отправлено»
+  if (!r.ok) return { error: r.error };
+  return { ok: messaging().name === "fake" ? "Тестовый режим: Wazzup не подключён, сообщение только записано" : "Отправлено" };
+}
+
+// «Бот молчит / включить» for one chat
+export async function muteAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireUser();
+  const id = uuid(fd, "conversationId");
+  if (!id) return { error: "Переписка не найдена" };
+  const muted = fd.get("muted") === "1";
+  await setAssistantMuted(id, muted);
+  return (refresh(), { ok: muted ? "Бот молчит в этом чате" : "Бот снова отвечает в этом чате" });
 }

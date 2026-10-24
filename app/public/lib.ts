@@ -1,10 +1,9 @@
 // Readers for the site's JSON bodies: everything is text or a number until checked here
 import { NextResponse } from "next/server";
+import { obj } from "@/lib/json";
 import { allow } from "@/lib/ratelimit";
 
-export const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
-export const num = (v: unknown) => (typeof v === "number" ? v : NaN);
-export const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+export { num, obj, str } from "@/lib/json";
 
 export async function body(req: Request) {
   try {

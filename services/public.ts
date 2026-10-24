@@ -9,9 +9,9 @@ import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { orderText } from "@/lib/templates";
 import { currentSeason, seasonRules, stockInput, tulips } from "./catalog";
 import { sendMessage, whatsappConversation } from "./messages";
-import { createOrder, orderCard, orderView } from "./orders";
+import { createOrder, orderCard, orderView, type Channel } from "./orders";
 
-const SITE_PCTS = [40, 60, 80, 100];
+export const SITE_PCTS = [40, 60, 80, 100]; // the site and the assistant offer these prepayments
 const DAY = 86_400_000;
 const PHONE_ERROR = "Телефон: казахстанский номер, +7 и 10 цифр";
 
@@ -81,8 +81,9 @@ export type SiteOrder = {
   prefillToken: string;
 };
 
-// POST /public/orders: the client's order through services/orders, then `booking` to the client and a line for Tatiana
-export async function createSiteOrder(o: SiteOrder) {
+// POST /public/orders: the client's order through services/orders, then `booking` to the client and a line for Tatiana.
+// The WhatsApp assistant books the same way (spec §19), with channel = whatsapp.
+export async function createSiteOrder(o: SiteOrder, channel: Channel = "site") {
   const slot = /^(\d{2}:\d{2})/.exec(o.pickupSlot)?.[1] ?? null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(o.pickupDate) || !slot) return { ok: false as const, error: "Укажите дату и время выдачи" };
   const legal = o.client.legalType === "too" ? `ТОО «${o.client.orgName}», БИН ${o.client.bin}` : ""; // no BIN field in clients (spec §6): it travels in the comment
@@ -99,7 +100,7 @@ export async function createSiteOrder(o: SiteOrder) {
       storage: o.storage,
       commentClient: [legal, o.comment].filter(Boolean).join("\n"),
       commentInternal: "",
-      channel: "site",
+      channel,
       createdBy: "client",
       prefillToken: o.prefillToken || null,
     },
@@ -109,7 +110,7 @@ export async function createSiteOrder(o: SiteOrder) {
   const card = (await orderCard(r.id))!;
   const sent = await sendMessage({ phone: card.client.phone, text: orderText("booking", orderView(card)), templateKey: "booking", orderId: r.id }, null);
   // Tatiana's push: the server log until the Telegram bot (stage H)
-  console.log(`[site] заказ ${r.number} (${r.status}) от ${card.client.phone}, ${tenge(card.order.total)}; booking: ${sent.ok ? sent.provider : sent.error}`);
+  console.log(`[${channel}] заказ ${r.number} (${r.status}) от ${card.client.phone}, ${tenge(card.order.total)}; booking: ${sent.ok ? sent.provider : sent.error}`);
   return {
     ok: true as const,
     orderNumber: r.number,

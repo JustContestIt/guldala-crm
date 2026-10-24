@@ -1,4 +1,4 @@
-// Data model of spec §6, stages 0–2. Columns are snake_case in the DB (casing option), camelCase here.
+// Data model of spec §6, stages 0–2, E. Columns are snake_case in the DB (casing option), camelCase here.
 // Botanica projects, Telegram and PIN fields arrive with their stages (6, 4).
 import { sql } from "drizzle-orm";
 import {
@@ -44,8 +44,8 @@ export const eventType = pgEnum("event_type", ["status_change", "payment", "edit
 export const actorType = pgEnum("actor_type", ["user", "system", "client"]);
 export const messageChannel = pgEnum("message_channel", ["whatsapp", "telegram", "instagram"]);
 export const messageDirection = pgEnum("message_direction", ["in", "out"]);
-export const messageAuthor = pgEnum("message_author", ["client", "operator", "system"]);
-export const messageStatus = pgEnum("message_status", ["queued", "sent", "delivered", "read", "error"]);
+export const messageAuthor = pgEnum("message_author", ["client", "operator", "system", "assistant"]);
+export const messageStatus = pgEnum("message_status", ["draft", "queued", "sent", "delivered", "read", "error"]);
 
 export const users = pgTable("users", {
   id: id(),
@@ -261,6 +261,7 @@ export const conversations = pgTable(
     unreadCount: integer().notNull().default(0),
     prefillToken: text().unique(), // site link with the client's contacts filled in (spec §14), valid 30 days from prefillTokenAt
     prefillTokenAt: timestamp({ withTimezone: true }),
+    assistantMutedAt: timestamp({ withTimezone: true }), // the bot keeps quiet in this chat (spec §19)
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -284,4 +285,11 @@ export const messages = pgTable("messages", {
   readAt: timestamp({ withTimezone: true }),
   isEcho: boolean().notNull().default(false),
   createdAt: createdAt(),
+});
+
+// Small facts kept between requests: the WhatsApp channel state and the last webhook time (stage E)
+export const appState = pgTable("app_state", {
+  key: text().primaryKey(),
+  value: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
