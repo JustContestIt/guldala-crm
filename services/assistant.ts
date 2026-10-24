@@ -75,7 +75,8 @@ const TOOLS: Tool[] = [
   { name: "order_link", description: "Ссылка на каталог с фото, где клиент соберёт заказ сам; его контакты подставятся.", parameters: object({}) },
   {
     name: "handoff",
-    description: "Передать чат Татьяне: скидки, доставка, сроки, просьба позвать человека, жалоба, всё, чего нет в базе знаний. После вызова бот в этом чате молчит.",
+    description:
+      "Передать чат Татьяне: скидки, доставка, сроки, просьба позвать человека, жалоба, вопрос по оформленному заказу или возврату, факт о хозяйстве, которого нет в базе знаний. Не для помощи с выбором и не для вопросов о цветах, ценах и заказе. После вызова бот в этом чате молчит.",
     parameters: object({ reason: { type: "string", description: "о чём клиент спрашивает — коротко, для Татьяны" } }),
   },
 ];
@@ -288,13 +289,17 @@ async function stale(m: Inbound) {
     })
     .from(conversations)
     .where(eq(conversations.id, m.conversationId));
-  return !!r.mutedAt || r.newer;
+  return r.mutedAt ? "the chat is muted" : r.newer ? "a newer message answers" : null;
 }
+
+// Why the bot stayed silent goes to the log: otherwise a muted chat looks like a broken bot
+const silent = (m: Inbound, why: string) => console.log(`[assistant] no answer: ${why}, conversation ${m.conversationId}`);
 
 async function answer(text: string, m: Inbound, c: Ctx, provider: MessagingProvider) {
   const body = text.trim();
-  if (!body) return;
-  if (!c.acted && (await stale(m))) return; // after an order or a handoff the client hears about it anyway
+  if (!body) return silent(m, "the model gave no text");
+  const why = c.acted ? null : await stale(m); // after an order or a handoff the client hears about it anyway
+  if (why) return silent(m, why);
   await db.delete(messages).where(and(eq(messages.conversationId, m.conversationId), eq(messages.status, "draft"))); // an older draft answered less
   const [draft] = await db
     .insert(messages)
@@ -311,7 +316,8 @@ export async function replyTo(m: Inbound, deps: { model?: Model; provider?: Mess
   const mode = a.mode;
   if (!season || mode === "off" || !process.env.OPENAI_API_KEY || !chatAllowed(m.chatId) || !ANSWERED.includes(m.type)) return;
   await new Promise((r) => setTimeout(r, settleMs));
-  if (await stale(m)) return;
+  const why = await stale(m);
+  if (why) return silent(m, why);
   const c: Ctx = { season, mode, clientId: m.clientId, conversationId: m.conversationId, phone: `+${m.chatId}`, acted: false };
   try {
     const prompt = instructions(season);

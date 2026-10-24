@@ -112,9 +112,12 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     const [reply] = await db.select().from(s.messages).where(eq(s.messages.author, "assistant"));
     expect(reply).toMatchObject({ status: "sent", direction: "out" });
 
-    await say("алло?", m.model); // muted: no model call, no answer
+    const log = vi.spyOn(console, "log");
+    await say("алло?", m.model); // muted: no model call, no answer — and the log says why
     expect(m.asked).toHaveLength(2);
     expect(sent).toHaveLength(1);
+    expect(log.mock.calls.flat().join(" ")).toContain("[assistant] no answer: the chat is muted");
+    log.mockRestore();
   });
 
   it("«сколько красных?» → stock in words, never in numbers", async () => {
