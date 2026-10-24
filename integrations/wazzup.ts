@@ -53,7 +53,8 @@ async function call(method: "GET" | "POST" | "PATCH", path: string, body?: unkno
       throw new Error("Wazzup не отвечает");
     }
     const text = await res.text();
-    console.log(`[wazzup] ${method} ${path} → ${res.status} ${text.slice(0, 300)}`);
+    // GET /webhooks answers with our address: the secret in it stays out of the log
+    console.log(`[wazzup] ${method} ${path} → ${res.status} ${text.slice(0, 300).replace(/(\/webhooks\/wazzup\/)[^"\s]+/g, "$1•••")}`);
     if (res.ok) return json(text);
     const code = str(obj(json(text)).error);
     // the retry hit Wazzup's 60 s crmMessageId dedup: the first attempt was delivered, its answer got lost

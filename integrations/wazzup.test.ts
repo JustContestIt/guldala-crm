@@ -31,6 +31,20 @@ it("explains Wazzup's errors in words, not JSON", async () => {
   await expect(wazzup.send(m)).rejects.toThrow("WAZZUP_API_TOKEN");
 });
 
+it("subscribes the webhooks and keeps the secret in the address out of the log", async () => {
+  const uri = "https://crm.example.kz/webhooks/wazzup/s3cr3t";
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response("OK", { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ webhooksUri: uri, subscriptions: { messagesAndStatuses: true } }), { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  expect(await wazzup.subscribe(uri)).toBe(uri);
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ webhooksUri: uri, subscriptions: { messagesAndStatuses: true, channelsUpdates: true, contactsAndDealsCreation: false } });
+  expect(log.mock.calls.flat().join(" ")).not.toContain("s3cr3t");
+  log.mockRestore();
+});
+
 it("parses a webhook with messages, statuses and channel updates together", () => {
   const w = handleWebhook({
     messages: [
