@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { invoiceAction, issueAction, paymentAction, statusAction } from "@/app/(main)/actions";
 import { ActionForm, Submit } from "@/components/ActionForm";
+import { DragBoard } from "@/components/DragBoard";
 import { db } from "@/db";
 import { seasons } from "@/db/schema";
 import { balanceOf, BOARD, dueOf, groupBoard, left, waiting } from "@/lib/board";
@@ -110,10 +111,17 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         )}
       </form>
 
-      {/* Spec §5.4: columns side by side from lg; on the phone one row per status with a swipeable strip of cards */}
+      {/* Spec §5.4: columns side by side from lg; on the phone one row per status with a swipeable strip of cards.
+          Cards drag to another status (hold on the phone); lit rows are where this card can go */}
+      <DragBoard ready={ready}>
       <div data-wide className="space-y-3 lg:flex lg:items-start lg:gap-3 lg:space-y-0 lg:overflow-x-auto lg:pb-2 no-scrollbar">
         {cols.map((c) => (
-          <section key={c.status} aria-label={STATUS_LABEL[c.status]} className="flex gap-2 lg:min-w-60 lg:flex-1 lg:flex-col lg:rounded-2xl lg:bg-line/40 lg:p-2">
+          <section
+            key={c.status}
+            aria-label={STATUS_LABEL[c.status]}
+            data-col={c.status}
+            className="-mx-1 flex gap-2 rounded-2xl p-1 transition-colors data-[drop]:bg-mint/60 data-[drop]:outline-2 data-[drop]:outline-dashed data-[drop]:outline-accent/50 data-[over]:bg-mint data-[over]:outline-accent lg:mx-0 lg:min-w-60 lg:flex-1 lg:flex-col lg:bg-line/40 lg:p-2"
+          >
             <header className="w-24 shrink-0 pt-1 lg:w-auto lg:px-1">
               <h2 className="text-sm leading-tight">{STATUS_LABEL[c.status]}</h2>
               <p className="mt-0.5 text-xs text-muted tabular-nums">
@@ -122,7 +130,17 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
             </header>
             <ul className="no-scrollbar flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
               {c.rows.map((r) => (
-                <li key={r.id} className="w-56 shrink-0 snap-start lg:w-auto">
+                <li
+                  key={r.id}
+                  data-card={r.id}
+                  data-status={r.status}
+                  data-number={r.number}
+                  data-due={dueOf(r)}
+                  data-balance={balanceOf(r)}
+                  data-invoice={invoiceOf.get(r.id)?.id}
+                  data-invoice-amount={invoiceOf.get(r.id)?.amount}
+                  className="w-56 shrink-0 snap-start select-none [-webkit-touch-callout:none] lg:w-auto lg:cursor-grab"
+                >
                   <div className="card flex h-full flex-col gap-2 p-3 text-sm">
                     <Link href={`/orders/${r.id}`} className="block flex-1">
                       <div className="flex justify-between gap-2 text-muted tabular-nums">
@@ -143,6 +161,13 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           </section>
         ))}
       </div>
+      {!closed && (
+        // fixed above the bottom bar, only while a card is dragged: drop here to cancel (asks for the reason)
+        <section data-col="cancelled" aria-label="Отменить заказ" className="fixed inset-x-4 bottom-20 z-50 mx-auto hidden max-w-3xl rounded-2xl border-2 border-dashed border-up/50 bg-up-bg p-4 text-center text-sm font-semibold text-up shadow-lg data-[drop]:block data-[over]:border-up data-[over]:bg-up data-[over]:text-white">
+          Отменить заказ
+        </section>
+      )}
+      </DragBoard>
 
       <Link href={href({ closed: closed ? "" : "1" })} className="inline-flex rounded-full border border-line bg-white px-3 py-1.5 text-sm">
         {closed ? "Скрыть истёкшие и отменённые" : "Показать истёкшие и отменённые"}
