@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   availableStems,
+  discountAmount,
   findRule,
   gridProblems,
   money,
@@ -75,6 +76,14 @@ describe("prepaymentAmount", () => {
     expect(prepaymentAmount(1_001, 40)).toBe(401); // 400.4
     expect(prepaymentAmount(999, 70)).toBe(700); // 699.3
     expect(prepaymentAmount(5_000, 100)).toBe(5_000);
+  });
+});
+
+describe("discountAmount", () => {
+  it("rounds down to a whole tenge", () => {
+    expect(discountAmount(24_000, 5)).toBe(1_200);
+    expect(discountAmount(1_001, 10)).toBe(100); // 100.1
+    expect(discountAmount(999, 5)).toBe(49); // 49.95
   });
 });
 

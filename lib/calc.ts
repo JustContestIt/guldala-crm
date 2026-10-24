@@ -28,6 +28,7 @@ export const findRule = (rules: Rule[], type: TulipType, day: string, pct: numbe
   ) ?? null;
 
 export const prepaymentAmount = (total: number, pct: number) => Math.ceil((total * pct) / 100);
+export const discountAmount = (subtotal: number, pct: number) => Math.floor((subtotal * pct) / 100);
 
 export const isValidPct = (pct: number, s: SeasonSettings) =>
   Number.isInteger(pct) &&

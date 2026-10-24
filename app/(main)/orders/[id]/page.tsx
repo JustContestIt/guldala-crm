@@ -13,12 +13,14 @@ import {
   statusAction,
   substituteAction,
 } from "@/app/(main)/actions";
-import { ActionForm, Submit } from "@/components/ActionForm";
+import { ActionForm, Preset, Submit } from "@/components/ActionForm";
 import { Composer } from "@/components/Composer";
+import { Sheet } from "@/components/Sheet";
 import { Stepper } from "@/components/Stepper";
 import { Field, StatusBadge } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { left } from "@/lib/board";
+import { discountAmount } from "@/lib/calc";
 import { describeEvent } from "@/lib/events";
 import { almatyDay, dm, dmhm, hhmm, prettyPhone, tenge } from "@/lib/format";
 import { ORDER_TEMPLATES, orderText, type OrderTemplate } from "@/lib/templates";
@@ -32,15 +34,6 @@ const PAY_STATUS = { pending: "ждём оплату", paid: "оплачено",
 
 // datetime-local value in Almaty time (UTC+5 all year)
 const localInput = (d: Date) => new Date(d.getTime() + 5 * 3_600_000).toISOString().slice(0, 16);
-
-function Panel({ title, children, danger }: { title: string; children: React.ReactNode; danger?: boolean }) {
-  return (
-    <details className="card">
-      <summary className={`font-semibold ${danger ? "text-up" : ""}`}>{title}</summary>
-      <div className="mt-3">{children}</div>
-    </details>
-  );
-}
 
 export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string }> }) {
   const user = await requireUser();
@@ -73,6 +66,10 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   // a Kaspi invoice already sent is the payment to close in one tap — a second record would pay twice
   const invoice = payments.find((p) => p.status === "pending");
   const issuable = o.status === "prepaid" || o.status === "ready";
+  // only lines with a same-type color to swap to (or a swap to undo)
+  const subs = items
+    .map((i) => ({ i, alts: allProducts.filter((p) => p.tulipType === i.tulipType && p.id !== i.productId) }))
+    .filter(({ i, alts }) => alts.length > 0 || i.substituteProductId);
 
   return (
     <div className="space-y-4">
@@ -243,8 +240,14 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           </ActionForm>
         )}
 
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
         {["confirmed", "prepaid", "ready", "issued"].includes(o.status) && m.balance > 0 && (
-          <Panel title={o.status === "confirmed" || issuable ? "Другая сумма или способ оплаты" : "Отметить оплату"}>
+          <Sheet
+            label={o.status === "confirmed" || issuable ? "Другая оплата" : "Отметить оплату"}
+            title={o.status === "confirmed" || issuable ? "Другая сумма или способ оплаты" : "Отметить оплату"}
+          >
             <ActionForm action={paymentAction} className="grid grid-cols-2 gap-3">
               <input type="hidden" name="id" value={o.id} />
               <Field label="Сумма, ₸">
@@ -270,11 +273,11 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                 <Submit>Записать</Submit>
               </div>
             </ActionForm>
-          </Panel>
+          </Sheet>
         )}
 
         {editable && owner && (
-          <Panel title="Изменить состав">
+          <Sheet label="Изменить состав">
             <ActionForm action={editItemsAction}>
               <input type="hidden" name="id" value={o.id} />
               {o.priceLockedAt && <p className="text-sm text-muted">Цена зафиксирована: добавленные пачки пойдут по сегодняшней сетке отдельной строкой.</p>}
@@ -298,25 +301,23 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
               ))}
               <Submit>Сохранить состав</Submit>
             </ActionForm>
-          </Panel>
+          </Sheet>
         )}
 
-        {editable && (
-          <Panel title="Замена цвета">
-            <div className="space-y-4">
-              {items.map((i) => (
-                <ActionForm key={i.id} action={substituteAction} className="grid grid-cols-2 gap-2">
+        {editable && subs.length > 0 && (
+          <Sheet label="Замена цвета">
+            <div className="divide-y divide-line">
+              {subs.map(({ i, alts }) => (
+                <ActionForm key={i.id} action={substituteAction} className="grid grid-cols-2 gap-2 py-3 first:pt-0">
                   <input type="hidden" name="itemId" value={i.id} />
-                  <Field label={i.name} className="col-span-2">
+                  <Field label={`${i.name} · ${i.qtyPacks} пач.`} className="col-span-2">
                     <select name="substituteId" defaultValue={i.substituteProductId ?? ""} className="input">
                       <option value="">без замены</option>
-                      {allProducts
-                        .filter((p) => p.tulipType === i.tulipType && p.id !== i.productId)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
+                      {alts.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
                     </select>
                   </Field>
                   <input name="note" defaultValue={i.substitutionNote ?? ""} placeholder="согласовано с клиентом…" aria-label="Пометка" className="input" />
@@ -324,13 +325,25 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                 </ActionForm>
               ))}
             </div>
-          </Panel>
+          </Sheet>
         )}
 
         {owner && !["issued", "cancelled"].includes(o.status) && (
-          <Panel title="Скидка">
+          <Sheet label="Скидка">
             <ActionForm action={discountAction} className="grid grid-cols-2 gap-3">
               <input type="hidden" name="id" value={o.id} />
+              <div className="col-span-2 flex flex-wrap gap-2">
+                {[5, 10].map((pct) => (
+                  <Preset key={pct} name="amount" value={discountAmount(o.subtotal, pct)}>
+                    {pct}% · {tenge(discountAmount(o.subtotal, pct))}
+                  </Preset>
+                ))}
+                {o.discountAmount > 0 && (
+                  <Preset name="amount" value={0}>
+                    Без скидки
+                  </Preset>
+                )}
+              </div>
               <Field label="Скидка, ₸">
                 <input name="amount" inputMode="numeric" defaultValue={o.discountAmount} className="input" />
               </Field>
@@ -341,11 +354,11 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                 <Submit>Сохранить скидку</Submit>
               </div>
             </ActionForm>
-          </Panel>
+          </Sheet>
         )}
 
         {["new", "confirmed", "prepaid", "ready"].includes(o.status) && (
-          <Panel title="Отменить заказ" danger>
+          <Sheet label="Отменить заказ" className="btn-danger col-span-2">
             <ActionForm action={cancelAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="id" value={o.id} />
               <Field label="Причина" className="flex-1">
@@ -355,7 +368,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                 Отменить
               </Submit>
             </ActionForm>
-          </Panel>
+          </Sheet>
         )}
       </div>
 

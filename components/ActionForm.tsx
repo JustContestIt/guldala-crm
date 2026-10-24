@@ -28,7 +28,10 @@ export function ActionForm({
         start(async () => {
           const r = await action(state, fd);
           setState(r ?? null);
-          if (r?.ok) form.reset();
+          if (r?.ok) {
+            form.reset();
+            form.closest("dialog")?.close(); // a Sheet's job is done; the page already shows the change
+          }
         });
       }}
     >
@@ -44,6 +47,22 @@ export function ActionForm({
         </p>
       )}
     </form>
+  );
+}
+
+// Puts a ready value into a field of the same form (e.g. «5%» → discount amount); saving stays a separate tap
+export function Preset({ name, value, children }: { name: string; value: number; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className="btn min-h-9 text-xs"
+      onClick={(e) => {
+        const field = e.currentTarget.form?.elements.namedItem(name);
+        if (field instanceof HTMLInputElement) field.value = String(value);
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
