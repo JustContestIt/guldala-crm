@@ -6,6 +6,10 @@ import { requireOwner } from "@/lib/auth";
 import { day, int, oneOf, prefixed, str, uuid, type FormState } from "@/lib/form";
 import { fromForm, TYPES } from "@/lib/grid";
 import type { SeasonSettings } from "@/lib/settings";
+import { CHANNEL_STATE } from "@/integrations/messaging";
+import { EFFORTS } from "@/integrations/openai";
+import { MODES, saveAssistantSettings } from "@/services/assistant";
+import { connectChannel } from "@/services/messages";
 import * as svc from "@/services/settings";
 
 const done = (ok: string): FormState => (refresh(), { ok });
@@ -94,4 +98,19 @@ export async function saveProductAction(_: FormState, fd: FormData): Promise<For
     sortOrder: int(fd, "sortOrder"),
   });
   return answer(r, "Сохранено");
+}
+
+// «Настройки → WhatsApp»: subscribe Wazzup's webhooks to this CRM and read the channel state
+export async function connectWhatsappAction(): Promise<FormState> {
+  await requireOwner();
+  const r = await connectChannel();
+  return r.ok ? done(`Вебхуки подписаны. Канал: ${CHANNEL_STATE[r.state] ?? r.state}`) : (refresh(), { error: r.error });
+}
+
+// «Ещё → Ассистент»: saved only after the chosen model answered a short question
+export async function assistantAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireOwner();
+  const r = await saveAssistantSettings({ mode: oneOf(fd, "mode", MODES, "off"), model: str(fd, "model", 100), effort: oneOf(fd, "effort", EFFORTS, "") });
+  if (!r.ok) return { error: r.error };
+  return done(r.checked ? "Сохранено: модель ответила на проверку" : "Сохранено (ключа OpenAI нет — модель не проверялась)");
 }

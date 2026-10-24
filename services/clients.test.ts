@@ -1,6 +1,7 @@
 // Integration: real Postgres (TEST_DATABASE_URL), recreated by tests/db-setup.ts
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import { fakeProvider } from "@/integrations/messaging";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
@@ -56,7 +57,7 @@ describe.skipIf(!enabled)("clients service", async () => {
     ]);
 
     // season_open sent to A shows as written
-    ok(await sendMessage({ phone: "+77010000000", text: "Здравствуйте!", templateKey: "season_open" }, null, { name: "test", send: async () => ({ messageId: "w" }) }));
+    ok(await sendMessage({ phone: "+77010000000", text: "Здравствуйте!", templateKey: "season_open" }, null, { ...fakeProvider, send: async () => ({ messageId: "w" }) }));
     const after = await lapsedClients(cur);
     expect(after.rows.map((x) => !!x.writtenAt)).toEqual([true, false]);
   });

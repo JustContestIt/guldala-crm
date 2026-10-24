@@ -1,6 +1,7 @@
 // Integration: real Postgres (TEST_DATABASE_URL), recreated by tests/db-setup.ts
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
+import { fakeProvider } from "@/integrations/messaging";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
@@ -258,7 +259,7 @@ describe.skipIf(!enabled)("orders service", async () => {
     const r = await sendMessage(
       { phone: base.phone, text: "Заказ принят", templateKey: "booking", orderId: id },
       actor,
-      { name: "test", send: async (m) => (sent.push(m.chatId), { messageId: "w-1" }) },
+      { ...fakeProvider, send: async (m) => (sent.push(m.chatId), { messageId: "w-1" }) },
     );
     expect(r.ok).toBe(true);
     expect(sent).toEqual(["77770000001"]);
@@ -266,7 +267,7 @@ describe.skipIf(!enabled)("orders service", async () => {
     expect(msg).toMatchObject({ status: "sent", externalMessageId: "w-1", templateKey: "booking", direction: "out" });
 
     const bad = await sendMessage({ phone: base.phone, text: "x", templateKey: "booking", orderId: id }, actor, {
-      name: "test",
+      ...fakeProvider,
       send: async () => {
         throw new Error("channel offline");
       },

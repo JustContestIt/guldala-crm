@@ -1,7 +1,7 @@
 // Settings screen (spec §5.8): seasons, price grid, colors, stock plan. Owner only — checked in the actions.
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { priceRules, products, seasons, stockAdjustments, stockPlans } from "@/db/schema";
+import { appState, priceRules, products, seasons, stockAdjustments, stockPlans } from "@/db/schema";
 import { gridProblems, type TulipType } from "@/lib/calc";
 import type { GridRule } from "@/lib/grid";
 import { DEFAULT_SETTINGS, parseHours, type SeasonSettings } from "@/lib/settings";
@@ -10,6 +10,18 @@ import { getSeason } from "./catalog";
 type Res = { ok: true } | { ok: false; error: string };
 const ok: Res = { ok: true };
 const no = (error: string): Res => ({ ok: false, error });
+
+// app_state: small app-wide facts — the WhatsApp channel, the last webhook, the assistant's settings. A save merges keys.
+export const saveState = (key: string, value: Record<string, unknown>) =>
+  db
+    .insert(appState)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: appState.key, set: { value: sql`${appState.value} || excluded.value`, updatedAt: new Date() } });
+
+export async function readState(key: string) {
+  const [row] = await db.select({ value: appState.value }).from(appState).where(eq(appState.key, key));
+  return row?.value ?? {};
+}
 
 export type SeasonFields = { name: string; ordersOpenFrom: string; peakDate: string; pickupFrom: string; pickupTo: string };
 
