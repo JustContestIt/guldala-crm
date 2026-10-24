@@ -3,7 +3,7 @@ import { dm, dmhm, hhmm, tenge } from "./format";
 
 export type TLine = { name: string; qtyPacks: number; packSize: number; unitPrice: number; lineTotal: number };
 
-// the greenhouse, as clients read it in every message (2GIS: 2gis.kz/almaty/geo/70030077154741280)
+// the greenhouse, as clients read it in every message (2GIS: go.2gis.com/OhBXy)
 const PLACE = "с. Бесагаш, ул. Мамыр, 1";
 
 const line = (l: TLine) => `— ${l.name}, ${l.qtyPacks} пач. × ${l.packSize} шт × ${tenge(l.unitPrice)} = ${tenge(l.lineTotal)}`;
