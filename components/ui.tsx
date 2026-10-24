@@ -1,5 +1,15 @@
+import Link from "next/link";
 import type { Status } from "@/lib/calc";
 import { STATUS_LABEL } from "@/lib/status";
+
+// «← Заказы» above a card: a full-size button, easy to hit with a thumb
+export function BackLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="btn min-h-12 px-4 text-base">
+      ← {children}
+    </Link>
+  );
+}
 
 const STATUS_CLS: Record<Status, string> = {
   new: "bg-warn-bg text-warn",

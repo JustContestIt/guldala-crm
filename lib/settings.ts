@@ -16,6 +16,7 @@ export type SeasonSettings = {
   price_lock_on: "prepaid" | "confirmed"; // open question 2
   client_notifications: "manual" | "auto";
   stock_few_below_pct: number; // the site says «мало» below this % of the plan (spec §14)
+  storage_fee_per_day: number; // ₸ per order for each day in the fridge, from the order day to pickup (spec §9)
 };
 
 export const DEFAULT_SETTINGS: SeasonSettings = {
@@ -35,6 +36,7 @@ export const DEFAULT_SETTINGS: SeasonSettings = {
   price_lock_on: "prepaid",
   client_notifications: "manual",
   stock_few_below_pct: 30,
+  storage_fee_per_day: 1000,
 };
 
 // "08:00–18:00" → ["08:00", "18:00"]; null if it isn't a range

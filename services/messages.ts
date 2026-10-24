@@ -68,6 +68,17 @@ export async function sendMessage(input: SendInput, actor: Actor | null, provide
   return deliver({ id: msg.id, conversationId, chatId, text, templateKey: input.templateKey, orderId: input.orderId ?? null }, actor, provider);
 }
 
+// A row queued earlier (a broadcast) goes out the same way as any message
+export async function sendQueued(id: string, provider: MessagingProvider = messaging()) {
+  const [m] = await db
+    .select({ id: messages.id, conversationId: messages.conversationId, text: messages.text, templateKey: messages.templateKey, chatId: conversations.externalId })
+    .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .where(and(eq(messages.id, id), eq(messages.status, "queued")));
+  if (!m) return { ok: false as const, error: "Сообщение уже отправлено или удалено" };
+  return deliver({ ...m, orderId: null }, null, provider);
+}
+
 // The assistant's draft goes out as written or as Tatiana corrected it; the author stays `assistant` (spec §19)
 export async function sendDraft(id: string, text: string, actor: Actor | null, provider: MessagingProvider = messaging()) {
   const body = text.trim();

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ActionForm, Submit } from "@/components/ActionForm";
-import { Field } from "@/components/ui";
+import { BackLink, Field } from "@/components/ui";
 import { EFFORTS, listModels, PRICES, type Effort } from "@/integrations/openai";
 import { requireOwner } from "@/lib/auth";
 import { almatyDay, dm } from "@/lib/format";
@@ -39,9 +38,7 @@ export default async function AssistantPage() {
 
   return (
     <div className="space-y-4">
-      <Link href="/more" className="text-sm text-muted">
-        ← Ещё
-      </Link>
+      <BackLink href="/more">Ещё</BackLink>
       <h1>Ассистент</h1>
       <section className="card space-y-2 text-sm">
         <p>Бот отвечает на входящие в WhatsApp по правилам и базе знаний ниже и оформляет заказ, как сайт. В чате, где Татьяна ответила сама, бот молчит — включить его снова можно в карточке клиента.</p>

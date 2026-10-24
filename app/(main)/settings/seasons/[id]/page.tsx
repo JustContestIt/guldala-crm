@@ -1,9 +1,8 @@
 import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm, Submit } from "@/components/ActionForm";
-import { Field } from "@/components/ui";
+import { BackLink, Field } from "@/components/ui";
 import { db } from "@/db";
 import { products, stockAdjustments, users } from "@/db/schema";
 import { requireOwner } from "@/lib/auth";
@@ -42,9 +41,7 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-4">
-      <Link href="/settings" className="text-sm text-muted">
-        ← Сезоны
-      </Link>
+      <BackLink href="/settings">Сезоны</BackLink>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1>{season.name}</h1>
         <ActionForm action={seasonStatusAction} className="flex flex-wrap items-center gap-2">
@@ -116,6 +113,9 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
           </Field>
           <Field label="Проверка от, ₸">
             <input name="check_threshold_amount" inputMode="numeric" className="input" defaultValue={s.check_threshold_amount} />
+          </Field>
+          <Field label="Холодильник, ₸ в сутки">
+            <input name="storage_fee_per_day" inputMode="numeric" className="input" defaultValue={s.storage_fee_per_day} />
           </Field>
           <Field label="Предоплата от, %">
             <input name="prepayment_min_pct" inputMode="numeric" className="input" defaultValue={s.prepayment_min_pct} />

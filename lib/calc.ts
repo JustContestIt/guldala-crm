@@ -28,6 +28,10 @@ export const findRule = (rules: Rule[], type: TulipType, day: string, pct: numbe
   ) ?? null;
 
 export const prepaymentAmount = (total: number, pct: number) => Math.ceil((total * pct) / 100);
+
+// The fridge until pickup is paid by the day, counted from the day the order is placed (Nikita 24.10.2026)
+export const storageDays = (orderDay: string, pickupDate: string | null) =>
+  pickupDate ? Math.max(0, Math.round((Date.parse(pickupDate) - Date.parse(orderDay)) / 86_400_000)) : 0;
 export const discountAmount = (subtotal: number, pct: number) => Math.floor((subtotal * pct) / 100);
 
 export const isValidPct = (pct: number, s: SeasonSettings) =>

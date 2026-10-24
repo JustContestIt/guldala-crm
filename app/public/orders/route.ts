@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     pickupSlot: str(b.pickupSlot, 20),
     pickupMethod: str(b.pickupMethod, 20),
     storage: b.storage === true,
-    client: { company: str(client.company), name: str(client.name), phone, legalType: str(client.legalType, 3), bin: str(client.bin, 12), orgName: str(client.orgName) },
+    client: { company: str(client.company), name: str(client.name), phone, legalType: str(client.legalType, 6), bin: str(client.bin, 12), orgName: str(client.orgName) },
     comment: str(b.comment, 2000), // the client's comment (≤ 1000) plus the varieties they picked
     prefillToken: str(b.prefillToken, 40),
   });

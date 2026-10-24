@@ -17,7 +17,7 @@ export function waiting(r: WaitRow) {
       return `предоплата ${tenge(dueOf(r))} до ${r.holdUntil ? dmhm(r.holdUntil) : "—"}`;
     case "prepaid":
     case "ready":
-      return [balanceOf(r) > 0 && `остаток ${tenge(balanceOf(r))}`, pickup ? `выдача ${pickup}` : "дата выдачи не задана"].filter(Boolean).join(", ");
+      return [balanceOf(r) > 0 && `доплата ${tenge(balanceOf(r))}`, pickup ? `выдача ${pickup}` : "дата выдачи не задана"].filter(Boolean).join(", ");
     case "issued":
       return balanceOf(r) > 0 ? `остаток ${tenge(balanceOf(r))}` : "выдан";
     case "expired":

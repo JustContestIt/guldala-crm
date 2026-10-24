@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ActionForm, Submit } from "@/components/ActionForm";
-import { Field } from "@/components/ui";
+import { BackLink, Field } from "@/components/ui";
 import { requireOwner } from "@/lib/auth";
 import { tulips, type Product } from "@/services/catalog";
 import { saveProductAction } from "../actions";
@@ -47,9 +46,7 @@ export default async function ProductsPage() {
   const next = Math.max(0, ...list.map((p) => p.sortOrder)) + 1;
   return (
     <div className="space-y-4">
-      <Link href="/more" className="text-sm text-muted">
-        ← Ещё
-      </Link>
+      <BackLink href="/more">Ещё</BackLink>
       <h1>Цвета</h1>
       <p className="text-sm text-muted">Единица учёта и продажи — цвет × тип, не сорт. План по цвету задаётся в сезоне.</p>
       {list.map((p) => (

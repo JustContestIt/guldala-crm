@@ -3,6 +3,9 @@ import { dm, dmhm, hhmm, tenge } from "./format";
 
 export type TLine = { name: string; qtyPacks: number; packSize: number; unitPrice: number; lineTotal: number };
 
+// the greenhouse, as clients read it in every message (2GIS: 2gis.kz/almaty/geo/70030077154741280)
+const PLACE = "с. Бесагаш, ул. Мамыр, 1";
+
 const line = (l: TLine) => `— ${l.name}, ${l.qtyPacks} пач. × ${l.packSize} шт × ${tenge(l.unitPrice)} = ${tenge(l.lineTotal)}`;
 const short = (lines: TLine[]) => lines.map((l) => `${l.name} ${l.qtyPacks} пач.`).join(", ");
 
@@ -21,7 +24,7 @@ export function quoteText(q: {
     ...q.lines.map(line),
     `Итого: ${tenge(q.total)} при предоплате ${q.pct} % (${tenge(q.prepayment)}).`,
     q.validUntil && `Цена действует до ${dm(q.validUntil)}, дальше по сетке дороже.`,
-    `Минимальный заказ — ${q.minStems} шт. Самовывоз с теплицы, пос. Гулдала, ${q.pickupHours}.`,
+    `Минимальный заказ — ${q.minStems} шт. Самовывоз с теплицы, ${PLACE}, ${q.pickupHours}.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -31,6 +34,8 @@ export type OrderView = {
   number: string;
   lines: TLine[];
   discount: number;
+  storageDays: number;
+  storageFee: number; // the fridge until pickup, already in total
   total: number;
   pct: number;
   prepayment: number; // full prepayment amount
@@ -62,6 +67,7 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
         `Заказ ${o.number} принят.`,
         ...o.lines.map(line),
         o.discount > 0 && `Скидка ${tenge(o.discount)}.`,
+        o.storageFee > 0 && `Холодильник до вывоза: ${o.storageDays} дн. — ${tenge(o.storageFee)}.`,
         `Итого ${tenge(o.total)}, предоплата ${o.pct} % — ${tenge(o.prepayment)}.`,
         o.prepaymentDue === 0
           ? "Предоплата получена, бронь закреплена."
@@ -69,8 +75,8 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
             ? `Счёт Kaspi выставлю на номер ${o.phone}. Без предоплаты бронь держится до ${dmhm(o.holdUntil)}.`
             : `Проверю наличие и подтвержу бронь, счёт Kaspi выставлю на номер ${o.phone}.`,
         pickup
-          ? `Выдача ${pickup}, ${o.pickupMethod === "client_truck" ? "отгрузка в вашу машину" : "самовывоз"}, пос. Гулдала.`
-          : "Дату выдачи согласуем, самовывоз с теплицы, пос. Гулдала.",
+          ? `Выдача ${pickup}, ${o.pickupMethod === "client_truck" ? "отгрузка в вашу машину" : "самовывоз"}, ${PLACE}.`
+          : `Дату выдачи согласуем, самовывоз с теплицы, ${PLACE}.`,
       ]
         .filter(Boolean)
         .join("\n");
@@ -79,10 +85,22 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
     case "pickup_reminder":
       return `Завтра ${pickup ?? ""} выдача заказа ${o.number}: ${short(o.lines)}. ${toPay(o.balance)}${o.balance > 0 ? " (нал или Kaspi)" : ""}. Теплица открыта ${o.pickupHours}. Нужно ли хранение в холодильнике?`;
     case "ready":
-      return `Заказ ${o.number} собран и ждёт вас: ${short(o.lines)}. ${toPay(o.balance)}. Выдача ${o.pickupHours}, пос. Гулдала.`;
+      return `Заказ ${o.number} собран и ждёт вас: ${short(o.lines)}. ${toPay(o.balance)}. Выдача ${o.pickupHours}, ${PLACE}.`;
   }
 }
 
 // season_open: to last season's clients, by hand, one at a time (spec §5.6, §12)
 export const seasonOpenText = (year: string, took: string) =>
-  `Здравствуйте! Guldala Tulpan открыли приём заказов на 8 марта ${year}. Сейчас цена ниже — чем ближе к дате, тем дороже. В прошлом сезоне вы брали ${took}. Посчитать на этот год?`;
+  `Здравствуйте! Guldala Tulpan открыли приём заказов на сезон ${year}. Сейчас цена ниже — чем позже заказ, тем дороже. В прошлом сезоне вы брали ${took}. Посчитать на этот год?`;
+
+// Broadcast text for one client: «Здравствуйте, {имя}!» → «Здравствуйте, Айгуль!», or «Здравствуйте!» when the name is unknown
+export const BROADCAST_VARS = ["{имя}", "{магазин}"] as const;
+export function fillBroadcast(text: string, c: { name: string; company: string | null }) {
+  const t = text
+    .replace(/(,?\s*)\{(имя|магазин)\}/g, (_, before: string, k: string) => {
+      const v = (k === "имя" ? c.name : (c.company ?? "")).trim();
+      return v ? before + v : "";
+    })
+    .replace(/^[\s,]+/, "");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}

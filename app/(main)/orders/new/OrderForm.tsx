@@ -30,6 +30,7 @@ export function OrderForm(p: {
     company: "",
     pct: p.initial.pct,
     pickupDate: p.initial.date,
+    storage: false,
   });
   const upd = (patch: Partial<typeof f>) => setF((x) => ({ ...x, ...patch }));
   const known = p.clients.find((c) => c.phone === normalizePhone(f.phone));
@@ -39,7 +40,7 @@ export function OrderForm(p: {
     upd({ phone, ...(c && !f.name && { name: c.name }), ...(c && !f.company && { company: c.company ?? "" }) });
   };
 
-  const q = computeQuote({ ...p, lines, pct: f.pct, date: f.pickupDate || null });
+  const q = computeQuote({ ...p, lines, pct: f.pct, date: f.pickupDate || null, storage: f.storage });
   const blocking = [...q.problems, ...q.priced.missing.map(() => "Нет цены на сегодня — проверьте сетку цен")];
   const willBeNew = q.shortages.length > 0 || q.overThreshold;
 
@@ -126,8 +127,8 @@ export function OrderForm(p: {
             </label>
           ))}
           <label className="flex items-center gap-2">
-            <input type="checkbox" name="storage" className="size-5" />
-            Холодильник до вывоза
+            <input type="checkbox" name="storage" checked={f.storage} onChange={(e) => upd({ storage: e.target.checked })} className="size-5" />
+            Холодильник до вывоза · {tenge(p.settings.storage_fee_per_day)} в сутки
           </label>
         </div>
         <Field label="Откуда заказ">
@@ -152,6 +153,12 @@ export function OrderForm(p: {
           <span className="text-muted">Итого</span>
           <span className="text-3xl font-extrabold tabular-nums">{tenge(q.total)}</span>
         </div>
+        {q.storage.fee > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-muted">Холодильник {q.storage.days} дн.</span>
+            <span className="tabular-nums">{tenge(q.storage.fee)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sm">
           <span className="text-muted">Предоплата {f.pct}%</span>
           <b className="tabular-nums">{tenge(q.prepayment)}</b>

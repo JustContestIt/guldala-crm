@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeProvider, type MessagingProvider } from "@/integrations/messaging";
 import type { Model, ModelRequest } from "@/integrations/openai";
 import { handleWebhook } from "@/integrations/wazzup";
+import { storageDays } from "@/lib/calc";
+import { almatyDay } from "@/lib/format";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
@@ -142,8 +144,9 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     const yes = script([{ name: "create_order", args: order() }], "Спасибо, Айгуль!");
     await say("да", yes.model);
     const [o] = await db.select().from(s.orders);
-    expect(o).toMatchObject({ channel: "whatsapp", createdBy: "client", status: "confirmed", total: 24_000, storageRequested: true, commentClient: "Сорта: Strong Love" });
-    expect(yes.outputs(1)[0]).toMatchObject({ orderNumber: o.number, total: 24_000, prepayment: 9_600 });
+    const fridge = storageDays(almatyDay(new Date()), "2027-03-06") * DEFAULT_SETTINGS.storage_fee_per_day; // paid by the day from today
+    expect(o).toMatchObject({ channel: "whatsapp", createdBy: "client", status: "confirmed", subtotal: 24_000, storageFee: fridge, total: 24_000 + fridge, storageRequested: true, commentClient: "Счёт на ИП\nСорта: Strong Love" });
+    expect(yes.outputs(1)[0]).toMatchObject({ orderNumber: o.number, total: 24_000 + fridge, prepayment: Math.ceil(((24_000 + fridge) * 40) / 100) });
     const out = await db.select().from(s.messages).where(eq(s.messages.direction, "out")).orderBy(asc(s.messages.createdAt));
     expect(out.map((x) => [x.author, x.templateKey])).toEqual([
       ["assistant", null], // «На какую дату…»

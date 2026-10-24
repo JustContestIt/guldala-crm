@@ -42,6 +42,7 @@ export async function seasonCurrent() {
       pickupFrom: season.pickupFrom,
       pickupTo: season.pickupTo,
       peakHoursFrom: s.peak_hours_from,
+      storageFeePerDay: s.storage_fee_per_day,
     },
     asOf: new Date().toISOString(),
     prices: { classic: at100("classic"), double: at100("double") },
@@ -86,7 +87,9 @@ export type SiteOrder = {
 export async function createSiteOrder(o: SiteOrder, channel: Channel = "site") {
   const slot = /^(\d{2}:\d{2})/.exec(o.pickupSlot)?.[1] ?? null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(o.pickupDate) || !slot) return { ok: false as const, error: "Укажите дату и время выдачи" };
-  const legal = o.client.legalType === "too" ? `ТОО «${o.client.orgName}», БИН ${o.client.bin}` : ""; // no BIN field in clients (spec §6): it travels in the comment
+  // no BIN field in clients (spec §6): who the invoice is for travels in the comment
+  const t = o.client.legalType;
+  const legal = t === "too" ? `Счёт на ТОО «${o.client.orgName}», БИН ${o.client.bin}` : t === "person" ? "Счёт на физ. лицо" : t === "ip" ? "Счёт на ИП" : "";
   const r = await createOrder(
     {
       phone: o.client.phone,
@@ -129,6 +132,7 @@ export async function orderByToken(token: string) {
   const card = row && (await orderCard(row.id));
   if (!card) return null;
   const { order: o, items, payments, events, money: m } = card;
+  const view = orderView(card);
   const invoice = payments.find((p) => p.status === "pending" && p.method === "kaspi_invoice");
   const eventType = (e: (typeof events)[number]["e"]) => {
     const p = e.payload as { created?: boolean; status?: string };
@@ -143,6 +147,8 @@ export async function orderByToken(token: string) {
     holdUntil: o.status === "confirmed" ? o.holdUntil : null,
     prepaymentPct: o.prepaymentPct,
     items: items.map((i) => ({ productId: i.productId, color: i.color ?? "", type: i.tulipType, packs: i.qtyPacks, stems: i.qtyStems, pricePerStem: i.unitPrice, sum: i.lineTotal })),
+    storageFee: o.storageFee,
+    storageDays: view.storageDays,
     total: o.total,
     paid: m.paid,
     prepaymentDue: m.prepaymentDue,

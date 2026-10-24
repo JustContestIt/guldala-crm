@@ -51,6 +51,7 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
     price_lock_on: oneOf(fd, "price_lock_on", ["prepaid", "confirmed"], "prepaid"),
     client_notifications: oneOf(fd, "client_notifications", ["manual", "auto"], "manual"),
     stock_few_below_pct: int(fd, "stock_few_below_pct"),
+    storage_fee_per_day: int(fd, "storage_fee_per_day"),
   };
   return answer(await svc.updateSeason(id, seasonFields(fd), settings), "Сохранено");
 }

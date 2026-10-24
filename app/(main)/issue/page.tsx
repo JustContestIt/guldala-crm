@@ -94,15 +94,15 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                   <input type="hidden" name="id" value={r.id} />
                   {bal > 0 ? (
                     <>
-                      <Submit name="method" value="cash" confirm={`Выдать ${r.number} и принять ${tenge(bal)} наличными?`}>
-                        Выдано · нал.
+                      <Submit name="method" value="cash" confirm={`Принять доплату ${tenge(bal)} наличными и выдать ${r.number}?`}>
+                        Доплата · нал.
                       </Submit>
-                      <Submit name="method" value="kaspi_invoice" className="" confirm={`Выдать ${r.number} и принять ${tenge(bal)} по Kaspi?`}>
-                        Выдано · Kaspi
+                      <Submit name="method" value="kaspi_invoice" className="" confirm={`Принять доплату ${tenge(bal)} по Kaspi и выдать ${r.number}?`}>
+                        Доплата · Kaspi
                       </Submit>
                     </>
                   ) : (
-                    <Submit confirm={`Выдать ${r.number} целиком?`}>Выдано</Submit>
+                    <Submit confirm={`Выдать ${r.number} целиком?`}>Выдать заказ</Submit>
                   )}
                 </ActionForm>
                 <ActionForm action={noShowAction}>

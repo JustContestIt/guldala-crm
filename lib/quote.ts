@@ -1,5 +1,5 @@
 // What the calculator and the order form show while Tatiana types: same rules the server applies on save
-import { orderProblems, prepaymentAmount, priceLines, shortages, type Rule, type TulipType } from "./calc";
+import { orderProblems, prepaymentAmount, priceLines, shortages, storageDays, type Rule, type TulipType } from "./calc";
 import type { SeasonSettings } from "./settings";
 
 export type ProductOpt = { id: string; name: string; tulipType: TulipType; packSize: number; freeStems: number };
@@ -16,6 +16,7 @@ export function computeQuote(a: {
   date: string | null;
   pickupFrom: string;
   pickupTo: string;
+  storage?: boolean; // the fridge until pickup, by the day from today
 }) {
   const byId = new Map(a.products.map((p) => [p.id, p]));
   const rows = a.lines.map((l) => {
@@ -24,12 +25,15 @@ export function computeQuote(a: {
     return { productId: p?.id ?? null, tulipType, qtyPacks: l.packs, packSize: p?.packSize ?? a.settings.pack_size, name: p?.name ?? ANY[tulipType] };
   });
   const priced = priceLines(rows, a.rules, a.today, a.pct);
-  const total = priced.subtotal;
+  const days = a.storage ? storageDays(a.today, a.date) : 0;
+  const storageFee = days * a.settings.storage_fee_per_day;
+  const total = priced.subtotal + storageFee;
   const withColor = rows.filter((r) => r.productId);
   return {
     rows,
     priced,
     prices: rows.map((r) => priceLines([r], a.rules, a.today, a.pct).lines[0] ?? null),
+    storage: { days, fee: storageFee },
     total,
     prepayment: prepaymentAmount(total, a.pct),
     problems: orderProblems({ lines: rows, settings: a.settings, pct: a.pct, pickupDate: a.date, pickupTime: null, pickupFrom: a.pickupFrom, pickupTo: a.pickupTo }),
@@ -37,7 +41,7 @@ export function computeQuote(a: {
       withColor.map((r) => ({ productId: r.productId!, name: r.name, qtyStems: r.qtyPacks * r.packSize, packSize: r.packSize })),
       new Map(a.products.map((p) => [p.id, p.freeStems])),
     ),
-    overThreshold: total >= a.settings.check_threshold_amount,
+    overThreshold: priced.subtotal >= a.settings.check_threshold_amount,
     allColored: rows.length > 0 && withColor.length === rows.length,
   };
 }

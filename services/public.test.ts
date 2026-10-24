@@ -1,6 +1,8 @@
 // Integration: the site's endpoints against real Postgres (TEST_DATABASE_URL), fake messaging provider
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
+import { storageDays } from "@/lib/calc";
+import { almatyDay } from "@/lib/format";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
@@ -81,6 +83,18 @@ describe.skipIf(!enabled)("public API", async () => {
     const [n] = await db.select().from(s.orders).where(eq(s.orders.number, big.orderNumber));
     expect(n.status).toBe("new");
     expect(n.holdUntil).toBeNull();
+  });
+
+  it("an invoice for a person and the fridge by the day: in the comment, the total and the order page", async () => {
+    const res = await post(order([{ productId: pink, packs: 4 }], "+77011111113", { storage: true, client: { company: "", name: "Айгуль", phone: "+77011111113", legalType: "person", bin: "", orgName: "" } }), "10.0.0.6");
+    expect(res.status).toBe(200);
+    const fee = storageDays(almatyDay(new Date()), "2027-03-06") * 1000;
+    const r = await res.json();
+    expect(r.total).toBe(24_000 + fee);
+    const [o] = await db.select().from(s.orders);
+    expect(o).toMatchObject({ commentClient: "Счёт на физ. лицо", storageRequested: true, storageFee: fee });
+    expect(await pub.orderByToken(r.token)).toMatchObject({ storageFee: fee, total: 24_000 + fee, storageDays: fee / 1000 });
+    expect((await pub.seasonCurrent())!.season.storageFeePerDay).toBe(1000);
   });
 
   it("refuses with a human text below the minimum and over stock, the client never gets a `new` order", async () => {

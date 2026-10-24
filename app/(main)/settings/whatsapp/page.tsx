@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ActionForm, Submit } from "@/components/ActionForm";
+import { BackLink } from "@/components/ui";
 import { CHANNEL_STATE, messaging } from "@/integrations/messaging";
 import { requireOwner } from "@/lib/auth";
 import { dmhm, prettyPhone } from "@/lib/format";
@@ -17,9 +17,7 @@ export default async function WhatsappPage() {
   const tests = process.env.WAZZUP_TEST_PHONES;
   return (
     <div className="space-y-4">
-      <Link href="/more" className="text-sm text-muted">
-        ← Ещё
-      </Link>
+      <BackLink href="/more">Ещё</BackLink>
       <h1>WhatsApp</h1>
       <section className="card space-y-1.5 text-sm">
         <div className="flex justify-between gap-3">

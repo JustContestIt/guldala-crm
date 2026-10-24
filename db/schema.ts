@@ -28,7 +28,7 @@ const updatedAt = () =>
 
 export const userRole = pgEnum("user_role", ["owner", "operator"]);
 export const clientType = pgEnum("client_type", ["flower_shop", "reseller", "landscaper", "private", "other"]);
-export const clientSource = pgEnum("client_source", ["order", "inbound_message", "import"]);
+export const clientSource = pgEnum("client_source", ["order", "inbound_message", "import", "manual"]);
 export const seasonStatus = pgEnum("season_status", ["planning", "open", "closed"]);
 export const productLine = pgEnum("product_line", ["tulpan", "botanica"]);
 export const tulipType = pgEnum("tulip_type", ["classic", "double"]);
@@ -176,6 +176,7 @@ export const orders = pgTable(
     pickupTime: time(),
     pickupMethod: pickupMethod().notNull().default("self_pickup"),
     storageRequested: boolean().notNull().default(false),
+    storageFee: integer().notNull().default(0), // part of total: storage_fee_per_day × days from the order day to pickup
     commentClient: text().notNull().default(""),
     commentInternal: text().notNull().default(""),
     confirmedAt: timestamp({ withTimezone: true }),

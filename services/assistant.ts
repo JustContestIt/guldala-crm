@@ -44,7 +44,12 @@ const TOOLS: Tool[] = [
   {
     name: "calculate",
     description: "Точный расчёт заказа по сетке цен CRM: строки, итог, предоплата и problems (минимум, наличие, дата, % предоплаты). Сводку клиенту строй только по нему.",
-    parameters: object({ items: ITEMS, prepaymentPct: PCT, pickupDate: nullable("string", "дата вывоза ГГГГ-ММ-ДД, если уже известна") }),
+    parameters: object({
+      items: ITEMS,
+      prepaymentPct: PCT,
+      pickupDate: nullable("string", "дата вывоза ГГГГ-ММ-ДД, если уже известна"),
+      storage: { type: "boolean", description: "холодильник до вывоза (платно, по дням от сегодня до вывоза)" },
+    }),
   },
   {
     name: "update_client",
@@ -61,7 +66,7 @@ const TOOLS: Tool[] = [
       pickupTime: nullable("string", "время вывоза ЧЧ:ММ"),
       pickupMethod: { type: "string", enum: ["self_pickup", "client_truck"], description: "самовывоз или своя машина клиента" },
       storage: { type: "boolean", description: "холодильник до вывоза" },
-      legalType: { type: "string", enum: ["ip", "too"], description: "счёт на ИП или на ТОО" },
+      legalType: { type: "string", enum: ["ip", "too", "person"], description: "счёт на ИП, на ТОО или на физическое лицо" },
       bin: nullable("string", "БИН ТОО, 12 цифр"),
       orgName: nullable("string", "название ТОО"),
       comment: nullable("string", "пожелания по сортам и прочее для Татьяны"),
@@ -122,9 +127,10 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
     const date = day(a.pickupDate);
     const pct = num(a.prepaymentPct);
     const s = c.season;
-    const q = computeQuote({ lines: l.lines, products, rules: await seasonRules(s.id), settings: s.settings, today: almatyDay(new Date()), pct, date, pickupFrom: s.pickupFrom, pickupTo: s.pickupTo });
+    const q = computeQuote({ lines: l.lines, products, rules: await seasonRules(s.id), settings: s.settings, today: almatyDay(new Date()), pct, date, pickupFrom: s.pickupFrom, pickupTo: s.pickupTo, storage: a.storage === true });
     return {
       lines: q.priced.lines.map((x) => ({ color: x.name, packs: x.qtyPacks, stems: x.qtyStems, pricePerStem: x.unitPrice, sum: x.lineTotal })),
+      ...(q.storage.fee > 0 && { fridge: { days: q.storage.days, fee: q.storage.fee } }),
       total: q.total,
       prepaymentPct: pct,
       prepayment: q.prepayment,
@@ -154,12 +160,12 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
     const l = lines(a.items, await productOpts(c.season.id));
     const pickupDate = day(a.pickupDate);
     const pickupTime = str(a.pickupTime, 5);
-    const legalType = a.legalType === "too" ? "too" : "ip";
+    const legalType = a.legalType === "too" || a.legalType === "person" ? a.legalType : "ip";
     const bin = str(a.bin, 20).replace(/\D/g, "");
     const orgName = str(a.orgName, 150).replace(/^ТОО\s*/i, "").replace(/^[«"“]+|[»"”]+$/g, ""); // the comment adds «ТОО «…»» itself
     const missing = [
       !cl.name && "имя (сохрани через update_client)",
-      !cl.company && "магазин (сохрани через update_client)",
+      !cl.company && legalType !== "person" && "магазин (сохрани через update_client)", // a person buys without a shop, as on the site
       !l.lines.length && "состав",
       !pickupDate && "дата вывоза",
       !pickupTime && "время вывоза",
@@ -237,6 +243,7 @@ function instructions(season: Season) {
     `- Без предоплаты бронь держится ${s.hold_days} дн. Цена фиксируется ${s.price_lock_on === "prepaid" ? "при предоплате" : "при подтверждении брони"}.`,
     `- Заказ от ${tenge(s.check_threshold_amount)} Татьяна проверяет и подтверждает сама.`,
     `- Пик — ${season.peakDate}. Выдача с ${season.pickupFrom} по ${season.pickupTo}, ${s.pickup_hours}${s.peak_hours_from ? `; с ${s.peak_hours_from} — ${s.pickup_hours_peak}` : ""}.`,
+    `- Холодильник до вывоза — ${tenge(s.storage_fee_per_day)} в сутки за заказ, считается от дня заказа до дня вывоза и входит в сумму заказа.`,
   ];
   return [promptFile("restrictions.md"), promptFile("knowledge.md"), facts.join("\n")].join("\n\n");
 }

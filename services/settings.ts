@@ -32,6 +32,7 @@ function seasonProblem(f: SeasonFields, s: SeasonSettings) {
   if (!(f.ordersOpenFrom <= f.pickupFrom)) return "Приём заказов должен начаться до выдачи";
   const ints = [s.pack_size, s.min_order_stems, s.hold_days, s.check_threshold_amount, s.prepayment_min_pct, s.prepayment_max_pct, s.prepayment_step, s.stock_few_below_pct];
   if (ints.some((n) => !Number.isInteger(n) || n < 1)) return "Числовые параметры — целые числа больше нуля";
+  if (!Number.isInteger(s.storage_fee_per_day) || s.storage_fee_per_day < 0) return "Холодильник — целое число тенге в сутки, 0 — бесплатно";
   if (s.prepayment_min_pct > s.prepayment_max_pct || s.prepayment_max_pct > 100) return "Предоплата: от ≤ до ≤ 100";
   if ((s.prepayment_max_pct - s.prepayment_min_pct) % s.prepayment_step) return "Шаг предоплаты должен укладываться между «от» и «до»";
   if (!parseHours(s.pickup_hours) || !parseHours(s.pickup_hours_peak)) return "Часы выдачи в виде 08:00–18:00";

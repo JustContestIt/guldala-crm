@@ -9,6 +9,7 @@ import {
   prepaymentAmount,
   priceLines,
   shortages,
+  storageDays,
   type Rule,
 } from "./calc";
 import { DEFAULT_SETTINGS } from "./settings";
@@ -76,6 +77,16 @@ describe("prepaymentAmount", () => {
     expect(prepaymentAmount(1_001, 40)).toBe(401); // 400.4
     expect(prepaymentAmount(999, 70)).toBe(700); // 699.3
     expect(prepaymentAmount(5_000, 100)).toBe(5_000);
+  });
+});
+
+describe("storageDays", () => {
+  it("counts days from the order day to pickup, none without a date", () => {
+    expect(storageDays("2027-03-03", "2027-03-06")).toBe(3);
+    expect(storageDays("2026-10-24", "2027-03-06")).toBe(133);
+    expect(storageDays("2027-03-06", "2027-03-06")).toBe(0);
+    expect(storageDays("2027-03-07", "2027-03-06")).toBe(0);
+    expect(storageDays("2027-03-03", null)).toBe(0);
   });
 });
 

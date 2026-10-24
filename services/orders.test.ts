@@ -2,6 +2,7 @@
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { fakeProvider } from "@/integrations/messaging";
+import { addDays, almatyDay } from "@/lib/format";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
@@ -102,6 +103,26 @@ describe.skipIf(!enabled)("orders service", async () => {
     const results = await Promise.all([o.confirmOrder(a.id, actor), o.confirmOrder(b.id, actor)]);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect((await available(seasonId)).get(red)).toBe(30);
+  });
+
+  it("charges the fridge by the day from the order day to pickup, on top of the flowers", async () => {
+    const today = almatyDay(new Date());
+    await db.update(s.seasons).set({ pickupFrom: today, pickupTo: addDays(today, 10) });
+    const pickupDate = addDays(today, 3);
+    const { id } = ok(await o.createOrder({ ...base, pickupDate, storage: true, lines: [{ productId: pink, qtyPacks: 4 }] }, actor));
+    const row = async () => (await db.select().from(s.orders).where(eq(s.orders.id, id)))[0];
+    expect(await row()).toMatchObject({ subtotal: 24_000, storageFee: 3_000, total: 27_000 });
+    // a discount is on the flowers; the fridge stays
+    ok(await o.setDiscount(id, 2_400, "постоянный клиент", actor));
+    expect(await row()).toMatchObject({ discountAmount: 2_400, storageFee: 3_000, total: 24_600 });
+    const [item] = await db.select().from(s.orderItems).where(eq(s.orderItems.orderId, id));
+    ok(await o.editItems(id, { existing: [{ itemId: item.id, qtyPacks: 5 }], added: [] }, actor));
+    expect(await row()).toMatchObject({ subtotal: 30_000, total: 30_600 });
+    const card = (await o.orderCard(id))!;
+    expect(card.money.prepayment).toBe(12_240); // 40 % of the whole total, fridge included
+    expect(o.orderView(card)).toMatchObject({ storageDays: 3, storageFee: 3_000 });
+    const plain = ok(await o.createOrder({ ...base, pickupDate, lines: [{ productId: pink, qtyPacks: 4 }] }, actor));
+    expect((await db.select().from(s.orders).where(eq(s.orders.id, plain.id)))[0]).toMatchObject({ storageFee: 0, total: 24_000 });
   });
 
   it("numbers orders per season", async () => {

@@ -50,13 +50,13 @@ function NextStep({ r, invoice }: { r: OrderListRow; invoice?: { id: string; amo
   if (r.status === "prepaid" || r.status === "ready")
     return bal > 0 ? (
       <Link href={`/orders/${r.id}`} className={`btn btn-primary ${small}`}>
-        Выдать · доплата {tenge(bal)}
+        Доплата {tenge(bal)} · выдать
       </Link>
     ) : (
       <ActionForm action={issueAction} className="">
         <input type="hidden" name="id" value={r.id} />
         <Submit className={`btn-primary ${small}`} confirm={`Выдать ${r.number} целиком?`}>
-          Выдано
+          Выдать
         </Submit>
       </ActionForm>
     );

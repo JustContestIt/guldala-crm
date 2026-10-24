@@ -4,11 +4,11 @@ import { notFound } from "next/navigation";
 import { clientAction, draftAction, muteAction } from "@/app/(main)/actions";
 import { ActionForm, Submit } from "@/components/ActionForm";
 import { Composer } from "@/components/Composer";
-import { Field, StatusBadge } from "@/components/ui";
-import { dmhm, prettyPhone, tenge } from "@/lib/format";
+import { BackLink, Field, StatusBadge } from "@/components/ui";
+import { almatyDay, dmhm, prettyPhone, tenge } from "@/lib/format";
 import { seasonOpenText } from "@/lib/templates";
 import { currentSeason } from "@/services/catalog";
-import { CLIENT_TYPES, clientCard, previousSeason, tookIn } from "@/services/clients";
+import { CLIENT_SOURCES, CLIENT_TYPES, clientCard, previousSeason, tookIn } from "@/services/clients";
 import { clientChat } from "@/services/messages";
 
 export const metadata: Metadata = { title: "Клиент" };
@@ -34,9 +34,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
   return (
     <div className="space-y-4">
-      <Link href="/clients" className="text-sm text-muted">
-        ← Клиенты
-      </Link>
+      <BackLink href="/clients">Клиенты</BackLink>
       <header className="space-y-1">
         <h1>{c.company || c.name || prettyPhone(c.phone)}</h1>
         {c.company && c.name && <p className="font-semibold">{c.name}</p>}
@@ -47,6 +45,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <a href={`https://wa.me/${c.phone.slice(1)}`} target="_blank" rel="noopener noreferrer" className="text-accent underline">
             WhatsApp
           </a>
+        </p>
+        <p className="text-sm text-muted">
+          {CLIENT_TYPES[c.clientType]} · {CLIENT_SOURCES[c.source]} {almatyDay(c.createdAt).split("-").reverse().join(".")}
         </p>
       </header>
       <Link href={`/orders/new?phone=${encodeURIComponent(c.phone)}`} className="btn btn-primary w-full">

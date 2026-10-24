@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canMove } from "./status";
-import { orderText, quoteText, type OrderView } from "./templates";
+import { fillBroadcast, orderText, quoteText, type OrderView } from "./templates";
 
 const lines = [
   { name: "Красный классический", qtyPacks: 4, packSize: 30, unitPrice: 200, lineTotal: 24_000 },
@@ -26,7 +26,7 @@ describe("quoteText", () => {
         "— Белый махровый, 2 пач. × 30 шт × 300 ₸ = 18 000 ₸",
         "Итого: 42 000 ₸ при предоплате 40 % (16 800 ₸).",
         "Цена действует до 31.12, дальше по сетке дороже.",
-        "Минимальный заказ — 120 шт. Самовывоз с теплицы, пос. Гулдала, 08:00–18:00.",
+        "Минимальный заказ — 120 шт. Самовывоз с теплицы, с. Бесагаш, ул. Мамыр, 1, 08:00–18:00.",
       ]
         .join("\n")
         .replace(/(\d) (\d)/g, "$1 $2")
@@ -40,6 +40,8 @@ describe("orderText", () => {
     number: "T-2027-0042",
     lines,
     discount: 0,
+    storageDays: 0,
+    storageFee: 0,
     total: 42_000,
     pct: 40,
     prepayment: 16_800,
@@ -58,6 +60,11 @@ describe("orderText", () => {
     expect(t).toContain("Заказ T-2027-0042 принят.");
     expect(t).toContain("бронь держится до 24.10 18:00");
     expect(t).toContain("Выдача 06.03 14:30, самовывоз");
+    expect(t).not.toContain("Холодильник");
+  });
+
+  it("booking shows the fridge days and their cost", () => {
+    expect(orderText("booking", { ...o, storageDays: 5, storageFee: 5_000, total: 47_000 })).toMatch(/Холодильник до вывоза: 5 дн\. — 5\s000\s₸\./);
   });
 
   it("booking of an unconfirmed order without date promises nothing", () => {
@@ -92,5 +99,17 @@ describe("canMove", () => {
     expect(canMove("expired", "cancelled")).toBe(false);
     expect(canMove("issued", "cancelled")).toBe(false);
     expect(canMove("cancelled", "confirmed")).toBe(false);
+  });
+});
+
+describe("fillBroadcast", () => {
+  const aigul = { name: "Айгуль", company: "Цветы на Абая" };
+  const nobody = { name: "", company: null };
+  it("puts the client's name and shop in, and drops them cleanly when unknown", () => {
+    expect(fillBroadcast("Здравствуйте, {имя}! Для {магазин} — скидка.", aigul)).toBe("Здравствуйте, Айгуль! Для Цветы на Абая — скидка.");
+    expect(fillBroadcast("Здравствуйте, {имя}!", nobody)).toBe("Здравствуйте!");
+    expect(fillBroadcast("Привет {имя}!", nobody)).toBe("Привет!");
+    expect(fillBroadcast("{имя}, добрый день!", nobody)).toBe("Добрый день!");
+    expect(fillBroadcast("Открыли приём заказов.", aigul)).toBe("Открыли приём заказов.");
   });
 });

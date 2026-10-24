@@ -17,7 +17,7 @@ import { ActionForm, Preset, Submit } from "@/components/ActionForm";
 import { Composer } from "@/components/Composer";
 import { Sheet } from "@/components/Sheet";
 import { Stepper } from "@/components/Stepper";
-import { Field, StatusBadge } from "@/components/ui";
+import { BackLink, Field, StatusBadge } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { left } from "@/lib/board";
 import { discountAmount } from "@/lib/calc";
@@ -73,16 +73,14 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
 
   return (
     <div className="space-y-4">
-      <Link href="/orders" className="text-sm text-muted">
-        ← Заказы
-      </Link>
+      <BackLink href="/orders">Заказы</BackLink>
 
       <header className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="tabular-nums">{o.number}</h1>
+          <h1 className="text-sm text-muted tabular-nums">{o.number}</h1>
           <StatusBadge status={o.status} />
         </div>
-        <p className="font-semibold">{[client.company, client.name].filter(Boolean).join(" · ") || "Без имени"}</p>
+        <p className="text-lg font-bold">{[client.company, client.name].filter(Boolean).join(" · ") || "Без имени"}</p>
         <p className="flex flex-wrap gap-3 text-sm">
           <a href={`tel:${client.phone}`} className="text-accent underline">
             {prettyPhone(client.phone)}
@@ -169,6 +167,12 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             <span className="tabular-nums">−{tenge(o.discountAmount)}</span>
           </p>
         )}
+        {o.storageFee > 0 && (
+          <p className="flex justify-between text-sm">
+            <span className="text-muted">Холодильник до вывоза · {view.storageDays} дн.</span>
+            <span className="tabular-nums">{tenge(o.storageFee)}</span>
+          </p>
+        )}
       </section>
 
       <div className="space-y-2">
@@ -220,16 +224,16 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             <input type="hidden" name="id" value={o.id} />
             {m.balance > 0 ? (
               <>
-                <Submit name="method" value="cash" confirm={`Выдать ${o.number} и принять ${tenge(m.balance)} наличными?`}>
-                  Выдано · нал.
+                <Submit name="method" value="cash" confirm={`Принять доплату ${tenge(m.balance)} наличными и выдать ${o.number}?`}>
+                  Доплата · нал.
                 </Submit>
-                <Submit name="method" value="kaspi_invoice" className="" confirm={`Выдать ${o.number} и принять ${tenge(m.balance)} по Kaspi?`}>
-                  Выдано · Kaspi
+                <Submit name="method" value="kaspi_invoice" className="" confirm={`Принять доплату ${tenge(m.balance)} по Kaspi и выдать ${o.number}?`}>
+                  Доплата · Kaspi
                 </Submit>
               </>
             ) : (
               <Submit className="btn-primary w-full" confirm={`Выдать ${o.number} целиком?`}>
-                Выдано
+                Выдать заказ
               </Submit>
             )}
           </ActionForm>
@@ -336,7 +340,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             <ActionForm action={discountAction} className="grid grid-cols-2 gap-3">
               <input type="hidden" name="id" value={o.id} />
               <div className="col-span-2 flex flex-wrap gap-2">
-                {[5, 10].map((pct) => (
+                {[5, 10, 15, 20].map((pct) => (
                   <Preset key={pct} name="amount" value={discountAmount(o.subtotal, pct)}>
                     {pct}% · {tenge(discountAmount(o.subtotal, pct))}
                   </Preset>

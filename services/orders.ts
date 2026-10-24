@@ -9,6 +9,7 @@ import {
   priceLines,
   RESERVING,
   shortages,
+  storageDays,
   type Status,
   type TulipType,
 } from "@/lib/calc";
@@ -135,7 +136,11 @@ async function retotal(tx: Db, o: Order) {
     .from(orderItems)
     .where(eq(orderItems.orderId, o.id));
   const discount = Math.min(o.discountAmount, s);
-  const [n] = await tx.update(orders).set({ subtotal: s, discountAmount: discount, total: s - discount }).where(eq(orders.id, o.id)).returning();
+  const [n] = await tx
+    .update(orders)
+    .set({ subtotal: s, discountAmount: discount, total: s - discount + o.storageFee })
+    .where(eq(orders.id, o.id))
+    .returning();
   return n;
 }
 
@@ -224,6 +229,7 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
     const day = almatyDay(new Date());
     const priced = priceLines(lines, await seasonRules(season.id), day, input.pct);
     if (priced.missing.length) fail(`Нет цены на ${dm(day)} (${priced.missing.map((t) => TYPE_NAME[t]).join(", ")}) — проверьте сетку цен`);
+    const storageFee = input.storage ? storageDays(day, input.pickupDate) * s.storage_fee_per_day : 0;
 
     await expireHolds();
     return db.transaction(async (tx) => {
@@ -266,7 +272,8 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
           createdBy: input.createdBy ?? "operator",
           prepaymentPct: input.pct,
           subtotal: priced.subtotal,
-          total: priced.subtotal,
+          storageFee,
+          total: priced.subtotal + storageFee,
           pickupDate: input.pickupDate,
           pickupTime: input.pickupTime,
           pickupMethod: input.pickupMethod,
@@ -468,7 +475,7 @@ export const setDiscount = (orderId: string, amount: number, reason: string, act
     if (amount > 0 && !reason.trim()) fail("Укажите причину скидки");
     const [n] = await tx
       .update(orders)
-      .set({ discountAmount: amount, discountReason: amount ? reason.trim() : null, total: o.subtotal - amount })
+      .set({ discountAmount: amount, discountReason: amount ? reason.trim() : null, total: o.subtotal - amount + o.storageFee })
       .where(eq(orders.id, o.id))
       .returning();
     await log(tx, o.id, actor, "edit", { payload: { discount: { from: o.discountAmount, to: amount }, reason: reason.trim() } });
@@ -608,6 +615,8 @@ export function orderView({ order: o, client, items, season, money: m }: OrderCa
     number: o.number,
     lines: items.map((i) => ({ name: i.substituteName ?? i.name, qtyPacks: i.qtyPacks, packSize: i.packSize, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
     discount: o.discountAmount,
+    storageDays: o.storageFee ? storageDays(almatyDay(o.createdAt), o.pickupDate) : 0,
+    storageFee: o.storageFee,
     total: o.total,
     pct: o.prepaymentPct,
     prepayment: m.prepayment,
