@@ -35,7 +35,8 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : next ?? today;
   const rows = await issueList(season.id, day, statuses, q);
   const days: string[] = [];
-  for (let d = season.pickupFrom; d <= season.pickupTo; d = addDays(d, 1)) days.push(d);
+  // from today on: the window may open months before the peak, and the days already gone would push today off screen
+  for (let d = season.pickupFrom > today ? season.pickupFrom : today; d <= season.pickupTo; d = addDays(d, 1)) days.push(d);
   if (!days.includes(today)) days.unshift(today);
 
   return (
