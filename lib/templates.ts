@@ -93,6 +93,10 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
 export const seasonOpenText = (year: string, took: string) =>
   `Здравствуйте! Guldala Tulpan открыли приём заказов на сезон ${year}. Сейчас цена ниже — чем позже заказ, тем дороже. В прошлом сезоне вы брали ${took}. Посчитать на этот год?`;
 
+// The bot's first words in a chat, word for word (Nikita, 26.10.2026): set before the model's own answer
+export const BOT_GREETING =
+  "Здравствуйте! Это Guldala.tulpan, теплица голландских тюльпанов под Алматы.\n\nЗдесь можно узнать цены и наличие сортов, оформить или изменить заказ, задать вопрос об оплате и вывозе. Мы постараемся вам помочь.";
+
 // Broadcast text for one client: «Здравствуйте, {имя}!» → «Здравствуйте, Айгуль!», or «Здравствуйте!» when the name is unknown
 export const BROADCAST_VARS = ["{имя}", "{магазин}"] as const;
 export function fillBroadcast(text: string, c: { name: string; company: string | null }) {

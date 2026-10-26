@@ -14,6 +14,7 @@ import { almatyDay, dmhm, prettyPhone, tenge } from "@/lib/format";
 import { num, obj, str } from "@/lib/json";
 import { computeQuote, type ProductOpt } from "@/lib/quote";
 import { STATUS_LABEL } from "@/lib/status";
+import { BOT_GREETING } from "@/lib/templates";
 import { currentSeason, productOpts, seasonRules, tulips, type Season } from "./catalog";
 import { sendDraft, type Inbound } from "./messages";
 import { createPrefill, createSiteOrder, seasonCurrent, SITE_PCTS } from "./public";
@@ -26,7 +27,7 @@ const ANSWERED = ["text", "image", "audio", "video", "document"]; // a client wr
 export const MODES = ["off", "draft", "auto"] as const;
 export type AssistantSettings = { mode: (typeof MODES)[number]; model: string; effort: Effort };
 
-type Ctx = { season: Season; mode: "draft" | "auto"; clientId: string; conversationId: string; phone: string; acted: boolean };
+type Ctx = { season: Season; mode: "draft" | "auto"; clientId: string; conversationId: string; phone: string; acted: boolean; greet: boolean };
 type Args = Record<string, unknown>;
 
 // ——— tools: strict JSON schemas (every field required, null = not known) ———
@@ -265,6 +266,7 @@ async function context(c: Ctx) {
     `Клиент: ${cl.name ? `имя — ${cl.name}` : "имя неизвестно"}, ${cl.company ? `магазин — ${cl.company}` : "магазин неизвестен"}. Телефон известен из чата.`,
     `Заказы клиента в этом сезоне: ${list.length ? list.map((o) => `${o.number} — ${STATUS_LABEL[o.status]}, ${tenge(o.total)}${o.pickupDate ? `, вывоз ${o.pickupDate}` : ""}`).join("; ") : "нет"}.`,
     c.mode === "draft" ? "Режим черновиков: ответ сначала проверит Татьяна, create_order недоступен — после «да» дай ссылку order_link или скажи, что Татьяна оформит заказ." : "",
+    c.greet ? `Это первый ответ в чате: перед твоим текстом CRM сама поставит приветствие «${BOT_GREETING}». Не здоровайся и не представляйся. Клиент только поздоровался и ни о чём не спросил — верни пустой текст.` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -303,7 +305,7 @@ function silent(run: Run, why: string) {
 }
 
 async function answer(text: string, m: Inbound, c: Ctx, provider: MessagingProvider, run: Run) {
-  const body = text.trim();
+  const body = [c.greet && BOT_GREETING, text.trim()].filter(Boolean).join("\n\n");
   if (!body) return silent(run, "модель не дала текста");
   const why = c.acted ? null : await stale(m); // after an order or a handoff the client hears about it anyway
   if (why) return silent(run, why);
@@ -334,9 +336,12 @@ export async function replyTo(m: Inbound, deps: { model?: Model; provider?: Mess
   try {
     const why = await stale(m);
     if (why) return silent(run, why);
-    const c: Ctx = { season, mode, clientId: m.clientId, conversationId: m.conversationId, phone: `+${m.chatId}`, acted: false };
+    const past = await history(m.conversationId);
+    // nothing from our side yet (Tatiana, the CRM or the bot): the answer opens with the greeting
+    const greet = !past.some((x) => "role" in x && x.role === "assistant");
+    const c: Ctx = { season, mode, clientId: m.clientId, conversationId: m.conversationId, phone: `+${m.chatId}`, acted: false, greet };
     const tools = TOOLS.filter((t) => mode === "auto" || t.name !== "create_order");
-    const input: ResponseInputItem[] = [{ role: "developer", content: await context(c) }, ...(await history(m.conversationId))];
+    const input: ResponseInputItem[] = [{ role: "developer", content: await context(c) }, ...past];
     for (let i = 0; i < MAX_STEPS; i++) {
       const t = Date.now();
       const r = await model({ model: a.model, effort: a.effort, instructions: prompt, input, tools });

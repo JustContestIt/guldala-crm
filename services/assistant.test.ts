@@ -7,6 +7,7 @@ import { handleWebhook } from "@/integrations/wazzup";
 import { storageDays } from "@/lib/calc";
 import { almatyDay } from "@/lib/format";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { BOT_GREETING } from "@/lib/templates";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
 const CH = "channel-test";
@@ -102,10 +103,24 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
+  it("opens only the first answer in a chat with the greeting, word for word; a lone hello gets the greeting alone", async () => {
+    const m = script("Есть, красных много.", "30 штук.");
+    await say("Есть красные?", m.model);
+    await say("Сколько в пачке?", m.model);
+    expect(sent).toEqual([`${BOT_GREETING}\n\nЕсть, красных много.`, "30 штук."]);
+    expect(m.asked[0].input[0]).toMatchObject({ content: expect.stringContaining("Не здоровайся") });
+    expect(m.asked[1].input[0]).not.toMatchObject({ content: expect.stringContaining("Не здоровайся") });
+
+    await db.execute(sql`truncate conversations, messages cascade`);
+    sent.length = 0;
+    await say("Здравствуйте", script("").model);
+    expect(sent).toEqual([BOT_GREETING]);
+  });
+
   it("«а скидка будет?» → handoff: the chat goes quiet, Tatiana gets a note, the client is told", async () => {
     const m = script([{ name: "handoff", args: { reason: "спрашивает про скидку" } }], "Передал ваш вопрос Татьяне, она ответит.");
     await say("а скидка будет?", m.model);
-    expect(sent).toEqual(["Передал ваш вопрос Татьяне, она ответит."]);
+    expect(sent).toEqual([`${BOT_GREETING}\n\nПередал ваш вопрос Татьяне, она ответит.`]);
     expect((await conversation()).assistantMutedAt).not.toBeNull();
     const [client] = await db.select().from(s.clients);
     expect(client.notes).toMatch(/бот передал Татьяне: спрашивает про скидку$/);
@@ -162,7 +177,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     expect(JSON.stringify(out.colors)).not.toMatch(/\d/);
     expect(m.asked[0]).toMatchObject({ model: "test-model", effort: "" }); // what «Ещё → Ассистент» saved
     expect(out.pricePerStemToday.classic).toMatchObject({ "40%": 200, "100%": 180, until: "2027-01-31" });
-    expect(sent).toEqual(["Красных много."]);
+    expect(sent).toEqual([`${BOT_GREETING}\n\nКрасных много.`]);
   });
 
   it("refuses to book without a pickup date, and books after «да» the way the site does", async () => {
@@ -203,11 +218,11 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
 
   it("in draft mode keeps the answer for Tatiana and offers no create_order", async () => {
     await setMode("draft");
-    const m = script("Здравствуйте! Сколько пачек нужно?");
+    const m = script("Сколько пачек нужно?");
     await say("Здравствуйте, хочу заказать", m.model);
     expect(sent).toEqual([]);
     const [draft] = await db.select().from(s.messages).where(eq(s.messages.author, "assistant"));
-    expect(draft).toMatchObject({ status: "draft", text: "Здравствуйте! Сколько пачек нужно?" });
+    expect(draft).toMatchObject({ status: "draft", text: `${BOT_GREETING}\n\nСколько пачек нужно?` });
     expect(m.asked[0].tools.map((t) => t.name)).not.toContain("create_order");
   });
 
