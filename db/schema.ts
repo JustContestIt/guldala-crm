@@ -16,6 +16,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { ModelReply } from "@/integrations/openai";
 import type { SeasonSettings } from "@/lib/settings";
 
 const id = () => uuid().primaryKey().defaultRandom();
@@ -285,6 +286,29 @@ export const messages = pgTable("messages", {
   sentAt: timestamp({ withTimezone: true }),
   readAt: timestamp({ withTimezone: true }),
   isEcho: boolean().notNull().default(false),
+  createdAt: createdAt(),
+});
+
+// One assistant run per client message (spec §19 «Журнал»): how the bot answered or why it kept quiet
+export const assistantOutcome = pgEnum("assistant_outcome", ["sent", "draft", "silent", "error"]);
+export type RunStep = Pick<ModelReply, "text" | "reasoning" | "usage"> & { ms: number; calls: { name: string; args: string; result: unknown; crash?: string }[] };
+
+export const assistantRuns = pgTable("assistant_runs", {
+  id: id(),
+  conversationId: uuid()
+    .notNull()
+    .references(() => conversations.id),
+  messageId: uuid()
+    .notNull()
+    .references(() => messages.id), // the client's message that started the run
+  mode: text().notNull(),
+  model: text().notNull(),
+  effort: text().notNull(),
+  rules: text().notNull(), // hash of the prompt: which restrictions.md + knowledge.md + season terms the bot followed
+  outcome: assistantOutcome().notNull(),
+  reason: text().notNull().default(""), // why it kept quiet, or the error
+  steps: jsonb().$type<RunStep[]>().notNull().default([]),
+  ms: integer().notNull(),
   createdAt: createdAt(),
 });
 

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ActionForm, Submit } from "@/components/ActionForm";
+import { RunDetails } from "@/components/RunDetails";
 import { BackLink, Field } from "@/components/ui";
 import { EFFORTS, listModels, PRICES, type Effort } from "@/integrations/openai";
 import { requireOwner } from "@/lib/auth";
-import { almatyDay, dm } from "@/lib/format";
-import { assistantSettings, promptFile } from "@/services/assistant";
+import { almatyDay, dm, dmhm, prettyPhone } from "@/lib/format";
+import { assistantSettings, promptFile, RUN_FILTERS, runLog, type RunFilter } from "@/services/assistant";
 import { assistantAction } from "../actions";
 
 export const metadata: Metadata = { title: "Ассистент" };
@@ -20,10 +22,14 @@ const EFFORT_LABEL: Record<Effort, string> = {
   max: "максимальное (max)",
 };
 
-// Spec §5.8 «Ассистент»: mode, the OpenAI model from the account's list, reasoning effort; the prompt files to read
-export default async function AssistantPage() {
+const FILTER: Record<RunFilter, string> = { error: "Ошибки", silent: "Промолчал", handoff: "Передал Татьяне" };
+
+// Spec §5.8 «Ассистент»: mode, the OpenAI model from the account's list, reasoning effort; the run journal; the prompt files to read
+export default async function AssistantPage({ searchParams }: { searchParams: Promise<{ runs?: string }> }) {
   await requireOwner();
-  const a = await assistantSettings();
+  const { runs: filter } = await searchParams;
+  const only = RUN_FILTERS.find((f) => f === filter);
+  const [a, runs] = await Promise.all([assistantSettings(), runLog({ only })]);
   const key = !!process.env.OPENAI_API_KEY;
   let models: { id: string; shutdown: string | null }[] = [];
   let listError = "";
@@ -82,6 +88,35 @@ export default async function AssistantPage() {
         </p>
         <Submit>Сохранить</Submit>
       </ActionForm>
+      <section className="card space-y-3">
+        <h2>Журнал</h2>
+        <p className="text-xs text-muted">
+          Последние 50 запусков бота: что он вызвал, что ответила CRM, ход мысли модели (по-английски, кратко) и ответ. «Правила» — отпечаток базы знаний, ограничений и условий сезона: сменился — бот отвечал уже по другим правилам.
+        </p>
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar">
+          {([["", "Все"], ...Object.entries(FILTER)] as [string, string][]).map(([k, label]) => (
+            <Link
+              key={k}
+              href={`/settings/assistant${k ? `?runs=${k}` : ""}`}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${(only ?? "") === k ? "border-accent bg-accent text-white" : "border-line bg-white"}`}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+        <ul className="space-y-2">
+          {runs.map((r) => (
+            <li key={r.run.id}>
+              <RunDetails run={r.run} title={`${dmhm(r.run.createdAt)} · ${r.company || r.name || prettyPhone(r.phone)} · `}>
+                <Link href={`/clients/${r.clientId}#chat`} className="text-accent underline">
+                  Переписка
+                </Link>
+              </RunDetails>
+            </li>
+          ))}
+        </ul>
+        {!runs.length && <p className="text-sm text-muted">Запусков нет</p>}
+      </section>
       <details className="card">
         <summary className="font-semibold">Правила — assistant/restrictions.md</summary>
         <pre className="mt-3 text-sm whitespace-pre-wrap">{promptFile("restrictions.md")}</pre>

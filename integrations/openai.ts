@@ -6,7 +6,8 @@ import type { ResponseInputItem } from "openai/resources/responses/responses";
 export type Tool = { name: string; description: string; parameters: Record<string, unknown> };
 export type ModelCall = { callId: string; name: string; arguments: string };
 export type ModelRequest = { model: string; effort: Effort; instructions: string; input: ResponseInputItem[]; tools: Tool[] };
-export type ModelReply = { text: string; calls: ModelCall[]; items: ResponseInputItem[] }; // items go back as input next step
+// items go back as input next step; reasoning (the model's own summary, in English) and usage go to the run journal
+export type ModelReply = { text: string; calls: ModelCall[]; items: ResponseInputItem[]; reasoning?: string; usage?: { in: number; cached: number; out: number } };
 export type Model = (r: ModelRequest) => Promise<ModelReply>;
 
 // "" = the model's own default; gpt-4o and gpt-4.1 don't reason at all and take only that
@@ -27,7 +28,7 @@ export const respond: Model = async ({ model, effort, instructions, input, tools
     instructions, // first and the same on every call: OpenAI caches a repeated prompt start by itself
     input,
     ...(tools.length ? { tools: tools.map((t) => ({ type: "function" as const, strict: true, ...t })) } : {}),
-    ...(effort && { reasoning: { effort } }),
+    ...(effort && { reasoning: { effort, summary: "detailed" as const } }), // «auto» gives gpt-6-luna/low no summary at all (26.10.2026)
     store: false, // the clients' messages don't stay at OpenAI; reasoning comes back encrypted in the items
   });
   const calls = r.output.flatMap((o) => (o.type === "function_call" ? [{ callId: o.call_id, name: o.name, arguments: o.arguments }] : []));
@@ -35,7 +36,13 @@ export const respond: Model = async ({ model, effort, instructions, input, tools
   console.log(
     `[openai] ${model}${effort ? `/${effort}` : ""} ${Date.now() - started} ms ${r.status}, tokens in ${u?.input_tokens} (cached ${u?.input_tokens_details.cached_tokens}) out ${u?.output_tokens}, tools: ${calls.map((c) => c.name).join(", ") || "—"}`,
   );
-  return { text: r.output_text, calls, items: toResponseInputItems(r.output) };
+  return {
+    text: r.output_text,
+    calls,
+    items: toResponseInputItems(r.output),
+    reasoning: r.output.flatMap((o) => (o.type === "reasoning" ? o.summary.map((s) => s.text) : [])).join("\n\n"),
+    usage: u && { in: u.input_tokens, cached: u.input_tokens_details.cached_tokens, out: u.output_tokens },
+  };
 };
 
 // Chat models for the assistant: text in and out with function calling. No dated snapshots, audio, voice, images,

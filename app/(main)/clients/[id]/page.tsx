@@ -4,9 +4,11 @@ import { notFound } from "next/navigation";
 import { clientAction, draftAction, muteAction } from "@/app/(main)/actions";
 import { ActionForm, Submit } from "@/components/ActionForm";
 import { Composer } from "@/components/Composer";
+import { RunDetails } from "@/components/RunDetails";
 import { BackLink, Field, StatusBadge } from "@/components/ui";
 import { almatyDay, dmhm, prettyPhone, tenge } from "@/lib/format";
 import { seasonOpenText } from "@/lib/templates";
+import { runLog } from "@/services/assistant";
 import { currentSeason } from "@/services/catalog";
 import { CLIENT_SOURCES, CLIENT_TYPES, clientCard, previousSeason, tookIn } from "@/services/clients";
 import { clientChat } from "@/services/messages";
@@ -31,6 +33,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const bySeason = Map.groupBy(orders, (o) => o.season);
   const chat = await clientChat(c.id);
   const drafts = chat?.messages.filter((m) => m.status === "draft") ?? [];
+  const runs = new Map(chat ? (await runLog({ conversationId: chat.conversation.id, limit: 30 })).map((r) => [r.run.messageId, r.run]) : []); // under the client's message it answered
 
   return (
     <div className="space-y-4">
@@ -128,6 +131,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   </p>
                   <p className="whitespace-pre-wrap">{m.text}</p>
                   {m.status === "error" && m.error && <p className="text-xs text-up">{m.error}</p>}
+                  {runs.has(m.id) && <RunDetails run={runs.get(m.id)!} />}
                 </li>
               ))}
           </ul>

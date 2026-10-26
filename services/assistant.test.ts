@@ -50,7 +50,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
   const { db } = await import("@/db");
   const s = await import("@/db/schema");
   const { receiveWebhook } = await import("./messages");
-  const { assistantSettings, replyTo, saveAssistantSettings } = await import("./assistant");
+  const { assistantSettings, replyTo, runLog, saveAssistantSettings } = await import("./assistant");
   const { saveState } = await import("./settings");
 
   const sent: string[] = [];
@@ -116,8 +116,39 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     await say("алло?", m.model); // muted: no model call, no answer — and the log says why
     expect(m.asked).toHaveLength(2);
     expect(sent).toHaveLength(1);
-    expect(log.mock.calls.flat().join(" ")).toContain("[assistant] no answer: the chat is muted");
+    expect(log.mock.calls.flat().join(" ")).toContain("[assistant] no answer: чат выключен");
     log.mockRestore();
+  });
+
+  it("journals every run: the tools with arguments and answers, the reasoning, why it kept quiet, the error", async () => {
+    const m = script([{ name: "stock_and_prices", args: {} }], "Красных много.");
+    const thinking: Model = async (req) => ({ ...(await m.model(req)), reasoning: "The client asks about stock", usage: { in: 900, cached: 800, out: 20 } });
+    const [asked] = await say("есть красные?", thinking);
+    const [run] = await runLog({});
+    expect(run.run).toMatchObject({ messageId: asked.id, outcome: "sent", reason: "", mode: "auto", model: "test-model", rules: expect.stringMatching(/^[0-9a-f]{8}$/) });
+    expect(run.run.steps).toHaveLength(2);
+    expect(run.run.steps[0]).toMatchObject({ reasoning: "The client asks about stock", usage: { in: 900, cached: 800, out: 20 }, calls: [{ name: "stock_and_prices", args: "{}", result: { saleOpen: true } }] });
+    expect(run.run.steps[1]).toMatchObject({ text: "Красных много.", calls: [] });
+    expect(run).toMatchObject({ phone: `+${PHONE}` });
+
+    await setMode("draft");
+    await say("а белые?", script("Белых мало.").model);
+    expect((await runLog({}))[0].run).toMatchObject({ outcome: "draft" });
+
+    const failing: Model = async () => {
+      throw new Error("429 You exceeded your current quota");
+    };
+    await say("ау", failing);
+    const [err] = await runLog({ only: "error" });
+    expect(err.run).toMatchObject({ outcome: "error", reason: "429 You exceeded your current quota", steps: [] });
+
+    await setMode("auto");
+    await say("позовите Татьяну", script([{ name: "handoff", args: { reason: "просит Татьяну" } }], "Передал Татьяне.").model);
+    await say("алло?", script("—").model);
+    const [quiet] = await runLog({ only: "silent" });
+    expect(quiet.run).toMatchObject({ outcome: "silent", reason: "чат выключен" });
+    expect((await runLog({ only: "handoff" })).map((r) => r.run.steps[0].calls[0].result)).toEqual([{ done: expect.stringContaining("Чат передан Татьяне") }]);
+    expect(await runLog({ conversationId: (await conversation()).id })).toHaveLength(5);
   });
 
   it("«сколько красных?» → stock in words, never in numbers", async () => {

@@ -1,11 +1,12 @@
 // WhatsApp assistant (spec §19): a questionnaire in the manner of assistant/brief-reference.md. It answers from the
 // knowledge base and books the order; prices, stock and orders come from the CRM services, the model only talks.
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 import { db } from "@/db";
-import { clients, conversations, messages, orders } from "@/db/schema";
+import { assistantRuns, clients, conversations, messages, orders, type RunStep } from "@/db/schema";
 import { chatAllowed, messaging, type MessagingProvider } from "@/integrations/messaging";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORTS, respond, type Effort, type Model, type Tool } from "@/integrations/openai";
 import type { TulipType } from "@/lib/calc";
@@ -220,14 +221,15 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
   },
 };
 
-async function tool(name: string, args: string, c: Ctx) {
+// result goes to the model; crash — the exception itself, for the journal only
+async function tool(name: string, args: string, c: Ctx): Promise<{ result: unknown; crash?: string }> {
   const run = RUN[name];
-  if (!run || (name === "create_order" && c.mode !== "auto")) return { error: `Инструмент ${name} недоступен` };
+  if (!run || (name === "create_order" && c.mode !== "auto")) return { result: { error: `Инструмент ${name} недоступен` } };
   try {
-    return await run(obj(JSON.parse(args)), c);
+    return { result: await run(obj(JSON.parse(args)), c) };
   } catch (e) {
     console.error(`[assistant] ${name} failed:`, e);
-    return { error: "Сбой CRM — извинись и передай вопрос Татьяне (handoff)" };
+    return { result: { error: "Сбой CRM — извинись и передай вопрос Татьяне (handoff)" }, crash: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -289,23 +291,31 @@ async function stale(m: Inbound) {
     })
     .from(conversations)
     .where(eq(conversations.id, m.conversationId));
-  return r.mutedAt ? "the chat is muted" : r.newer ? "a newer message answers" : null;
+  return r.mutedAt ? "чат выключен" : r.newer ? "клиент дописал — ответит следующее сообщение" : null;
 }
 
-// Why the bot stayed silent goes to the log: otherwise a muted chat looks like a broken bot
-const silent = (m: Inbound, why: string) => console.log(`[assistant] no answer: ${why}, conversation ${m.conversationId}`);
+type Run = typeof assistantRuns.$inferInsert;
 
-async function answer(text: string, m: Inbound, c: Ctx, provider: MessagingProvider) {
+// Why the bot stayed silent goes to the log and the journal: otherwise a muted chat looks like a broken bot
+function silent(run: Run, why: string) {
+  console.log(`[assistant] no answer: ${why}, conversation ${run.conversationId}`);
+  Object.assign(run, { outcome: "silent", reason: why });
+}
+
+async function answer(text: string, m: Inbound, c: Ctx, provider: MessagingProvider, run: Run) {
   const body = text.trim();
-  if (!body) return silent(m, "the model gave no text");
+  if (!body) return silent(run, "модель не дала текста");
   const why = c.acted ? null : await stale(m); // after an order or a handoff the client hears about it anyway
-  if (why) return silent(m, why);
+  if (why) return silent(run, why);
   await db.delete(messages).where(and(eq(messages.conversationId, m.conversationId), eq(messages.status, "draft"))); // an older draft answered less
   const [draft] = await db
     .insert(messages)
     .values({ conversationId: m.conversationId, direction: "out", author: "assistant", text: body, status: "draft" })
     .returning({ id: messages.id });
-  if (c.mode === "auto") await sendDraft(draft.id, body, null, provider);
+  run.outcome = "draft";
+  if (c.mode !== "auto") return;
+  const sent = await sendDraft(draft.id, body, null, provider);
+  Object.assign(run, sent.ok ? { outcome: "sent" } : { outcome: "error", reason: sent.error });
 }
 
 // A new client message (receiveWebhook) → an answer: a draft for Tatiana or, in `auto`, sent right away.
@@ -316,23 +326,61 @@ export async function replyTo(m: Inbound, deps: { model?: Model; provider?: Mess
   const mode = a.mode;
   if (!season || mode === "off" || !process.env.OPENAI_API_KEY || !chatAllowed(m.chatId) || !ANSWERED.includes(m.type)) return;
   await new Promise((r) => setTimeout(r, settleMs));
-  const why = await stale(m);
-  if (why) return silent(m, why);
-  const c: Ctx = { season, mode, clientId: m.clientId, conversationId: m.conversationId, phone: `+${m.chatId}`, acted: false };
+  const started = Date.now();
+  const prompt = instructions(season);
+  const steps: RunStep[] = [];
+  const rules = createHash("sha256").update(prompt).digest("hex").slice(0, 8);
+  const run: Run = { conversationId: m.conversationId, messageId: m.id, mode, model: a.model, effort: a.effort, rules, outcome: "silent", steps, ms: 0 };
   try {
-    const prompt = instructions(season);
+    const why = await stale(m);
+    if (why) return silent(run, why);
+    const c: Ctx = { season, mode, clientId: m.clientId, conversationId: m.conversationId, phone: `+${m.chatId}`, acted: false };
     const tools = TOOLS.filter((t) => mode === "auto" || t.name !== "create_order");
     const input: ResponseInputItem[] = [{ role: "developer", content: await context(c) }, ...(await history(m.conversationId))];
-    for (let step = 0; step < MAX_STEPS; step++) {
+    for (let i = 0; i < MAX_STEPS; i++) {
+      const t = Date.now();
       const r = await model({ model: a.model, effort: a.effort, instructions: prompt, input, tools });
+      const step: RunStep = { ms: Date.now() - t, text: r.text, reasoning: r.reasoning, usage: r.usage, calls: [] };
+      steps.push(step);
       input.push(...r.items);
-      if (!r.calls.length) return await answer(r.text, m, c, provider);
-      for (const call of r.calls) input.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(await tool(call.name, call.arguments, c)) });
+      if (!r.calls.length) return await answer(r.text, m, c, provider, run);
+      for (const call of r.calls) {
+        const { result, crash } = await tool(call.name, call.arguments, c);
+        step.calls.push({ name: call.name, args: call.arguments, result, ...(crash && { crash }) });
+        input.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(result) });
+      }
     }
     console.error(`[assistant] no answer in ${MAX_STEPS} steps, conversation ${m.conversationId}`);
+    Object.assign(run, { outcome: "error", reason: `нет ответа за ${MAX_STEPS} шагов` });
   } catch (e) {
     console.error(`[assistant] failed, conversation ${m.conversationId}:`, e);
+    Object.assign(run, { outcome: "error", reason: e instanceof Error ? e.message : String(e) });
+  } finally {
+    await db
+      .insert(assistantRuns)
+      .values({ ...run, ms: Date.now() - started })
+      .catch((e) => console.error(`[assistant] run not journaled, conversation ${m.conversationId}:`, e));
   }
+}
+
+export const RUN_FILTERS = ["error", "silent", "handoff"] as const;
+export type RunFilter = (typeof RUN_FILTERS)[number];
+
+// The run journal, newest first: all chats on «Ещё → Ассистент» (with a filter), one chat in the client card
+export async function runLog({ conversationId, only, limit = 50 }: { conversationId?: string; only?: RunFilter; limit?: number }) {
+  return db
+    .select({ run: assistantRuns, clientId: clients.id, name: clients.name, company: clients.company, phone: clients.phone })
+    .from(assistantRuns)
+    .innerJoin(conversations, eq(conversations.id, assistantRuns.conversationId))
+    .innerJoin(clients, eq(clients.id, conversations.clientId))
+    .where(
+      and(
+        conversationId ? eq(assistantRuns.conversationId, conversationId) : undefined,
+        only === "handoff" ? sql`${assistantRuns.steps} @> ${JSON.stringify([{ calls: [{ name: "handoff" }] }])}::jsonb` : only ? eq(assistantRuns.outcome, only) : undefined,
+      ),
+    )
+    .orderBy(desc(assistantRuns.createdAt))
+    .limit(limit);
 }
 
 // «Ещё → Ассистент»: off / draft / auto, the model and its reasoning effort (app_state "assistant")
