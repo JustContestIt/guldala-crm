@@ -16,6 +16,12 @@ export const hm = (d: Date) =>
 // "23.10 18:00"
 export const dmhm = (d: Date) => `${dm(almatyDay(d))} ${hm(d)}`;
 
+// With the year, for texts to clients: a season spans two years, and «05.03» written in October is ambiguous
+// "2027-03-05" → "05.03.2027"
+export const dmy = (day: string) => `${dm(day)}.${day.slice(0, 4)}`;
+// "23.10.2026 18:00"
+export const dmyhm = (d: Date) => `${dmy(almatyDay(d))} ${hm(d)}`;
+
 // Postgres time "14:30:00" → "14:30"
 export const hhmm = (t: string | null) => (t ? t.slice(0, 5) : "");
 

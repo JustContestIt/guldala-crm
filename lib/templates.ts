@@ -1,5 +1,5 @@
 // WhatsApp texts of spec §13. Drafts until Tatiana approves them; she can edit every text before sending.
-import { dm, dmhm, hhmm, tenge } from "./format";
+import { dmy, dmyhm, hhmm, tenge } from "./format";
 
 export type TLine = { name: string; qtyPacks: number; packSize: number; unitPrice: number; lineTotal: number };
 
@@ -20,10 +20,10 @@ export function quoteText(q: {
   minStems: number;
 }) {
   return [
-    `Guldala Tulpan, расчёт на ${dm(q.day)}:`,
+    `Guldala Tulpan, расчёт на ${dmy(q.day)}:`,
     ...q.lines.map(line),
     `Итого: ${tenge(q.total)} при предоплате ${q.pct} % (${tenge(q.prepayment)}).`,
-    q.validUntil && `Цена действует до ${dm(q.validUntil)}, дальше по сетке дороже.`,
+    q.validUntil && `Цена действует до ${dmy(q.validUntil)}, дальше по сетке дороже.`,
     `Минимальный заказ — ${q.minStems} шт. Самовывоз с теплицы, ${PLACE}, ${q.pickupHours}.`,
   ]
     .filter(Boolean)
@@ -60,7 +60,7 @@ export type OrderTemplate = keyof typeof ORDER_TEMPLATES;
 const toPay = (balance: number) => (balance > 0 ? `К доплате ${tenge(balance)}` : "Заказ оплачен полностью");
 
 export function orderText(key: OrderTemplate, o: OrderView): string {
-  const pickup = o.pickupDate ? `${dm(o.pickupDate)}${o.pickupTime ? ` ${hhmm(o.pickupTime)}` : ""}` : null;
+  const pickup = o.pickupDate ? `${dmy(o.pickupDate)}${o.pickupTime ? ` ${hhmm(o.pickupTime)}` : ""}` : null;
   switch (key) {
     case "booking":
       return [
@@ -72,7 +72,7 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
         o.prepaymentDue === 0
           ? "Предоплата получена, бронь закреплена."
           : o.holdUntil
-            ? `Счёт Kaspi выставлю на номер ${o.phone}. Без предоплаты бронь держится до ${dmhm(o.holdUntil)}.`
+            ? `Счёт Kaspi выставлю на номер ${o.phone}. Без предоплаты бронь держится до ${dmyhm(o.holdUntil)}.`
             : `Проверю наличие и подтвержу бронь, счёт Kaspi выставлю на номер ${o.phone}.`,
         pickup
           ? `Выдача ${pickup}, ${o.pickupMethod === "client_truck" ? "отгрузка в вашу машину" : "самовывоз"}, ${PLACE}.`
@@ -81,7 +81,7 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
         .filter(Boolean)
         .join("\n");
     case "payment_reminder":
-      return `Напоминаю по заказу ${o.number}: бронь держится до ${o.holdUntil ? dmhm(o.holdUntil) : "—"}. Предоплата ${tenge(o.prepaymentDue)} по счёту Kaspi. После срока цветы вернутся в продажу.`;
+      return `Напоминаю по заказу ${o.number}: бронь держится до ${o.holdUntil ? dmyhm(o.holdUntil) : "—"}. Предоплата ${tenge(o.prepaymentDue)} по счёту Kaspi. После срока цветы вернутся в продажу.`;
     case "pickup_reminder":
       return `Завтра ${pickup ?? ""} выдача заказа ${o.number}: ${short(o.lines)}. ${toPay(o.balance)}${o.balance > 0 ? " (нал или Kaspi)" : ""}. Теплица открыта ${o.pickupHours}. Нужно ли хранение в холодильнике?`;
     case "ready":
