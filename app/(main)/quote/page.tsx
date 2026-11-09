@@ -5,7 +5,7 @@ import { currentSeason, productOpts, seasonRules } from "@/services/catalog";
 import { expireHolds } from "@/services/orders";
 import { Calculator } from "./Calculator";
 
-export const metadata: Metadata = { title: "Расчёт" };
+export const metadata: Metadata = { title: "Заказ вручную" };
 
 export default async function QuotePage() {
   const season = await currentSeason();
@@ -19,7 +19,7 @@ export default async function QuotePage() {
   const [rules, products] = await Promise.all([seasonRules(season.id), productOpts(season.id)]);
   return (
     <div className="space-y-4">
-      <h1>Расчёт</h1>
+      <h1>Заказ вручную</h1>
       <Calculator products={products} rules={rules} settings={season.settings} today={almatyDay(new Date())} pickupFrom={season.pickupFrom} pickupTo={season.pickupTo} />
     </div>
   );

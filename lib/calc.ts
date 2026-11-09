@@ -78,7 +78,8 @@ export function availableStems({ plans, adjustments, items }: StockInput): Map<s
   for (const it of items) {
     const id = it.substituteProductId ?? it.productId;
     if (RESERVING.includes(it.status)) add(id, -it.qtyStems);
-    else if (it.status === "issued") add(id, -it.issuedStems);
+    // handed out is gone, also from an order cancelled after a partial shipment (review 09.11.2026, К20)
+    else add(id, -it.issuedStems);
   }
   return m;
 }

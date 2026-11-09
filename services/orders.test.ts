@@ -211,17 +211,26 @@ describe.skipIf(!enabled)("orders service", async () => {
     expect(card!.events.map((e) => e.e.payload.issued).filter(Boolean)).toEqual(["Розовый классический 3 пач."]);
   });
 
-  it("issues a confirmed order only whole with full payment, and logs a no-show", async () => {
+  it("issues a confirmed order only whole with full payment", async () => {
     const { id } = await placed({ ...base, lines: [{ productId: pink, qtyPacks: 4 }] }); // nothing paid
     const [item] = await db.select().from(s.orderItems).where(eq(s.orderItems.orderId, id));
     expect(await o.issueOrder(id, "cash", actor, { [item.id]: 2 })).toEqual({ ok: false, error: "Без предоплаты заказ выдаётся только целиком, с полной оплатой" });
-    ok(await o.noShow(id, "2027-03-06", actor));
-    expect(await statusOf(id)).toBe("confirmed");
     ok(await o.issueOrder(id, "cash", actor));
     const card = await o.orderCard(id);
     expect(card!.order.status).toBe("issued");
     expect(card!.money).toMatchObject({ paid: 24_000, paidInFull: true });
-    expect(card!.events.filter((e) => e.e.type === "note").map((e) => e.e.payload)).toEqual([{ noShow: "2027-03-06" }]);
+  });
+
+  it("a client who didn't come: the order is cancelled, the flowers go back, the prepayment stays", async () => {
+    const { id } = await placed({ ...base, lines: [{ productId: pink, qtyPacks: 4 }] });
+    ok(await o.recordPayment(id, { amount: 9_600, method: "kaspi_invoice", paid: true, invoiceRef: "", note: "" }, actor));
+    expect(await statusOf(id)).toBe("prepaid");
+    const free = (await available(seasonId)).get(pink)!;
+    ok(await o.cancelOrder(id, "Не приехал за заказом 06.03", actor));
+    const card = await o.orderCard(id);
+    expect(card!.order).toMatchObject({ status: "cancelled", cancelReason: "Не приехал за заказом 06.03" });
+    expect(card!.money.paid).toBe(9_600); // compensation: nothing is refunded (Nikita 09.11.2026)
+    expect((await available(seasonId)).get(pink)).toBe(free + 120);
   });
 
   it("expires a hold by itself and resumes it at today's price", async () => {

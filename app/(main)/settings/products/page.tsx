@@ -1,12 +1,17 @@
+import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { ActionForm, Submit } from "@/components/ActionForm";
 import { BackLink, Field } from "@/components/ui";
+import { db } from "@/db";
+import { products, stockAdjustments, users } from "@/db/schema";
 import { requireOwner } from "@/lib/auth";
+import { dmhm } from "@/lib/format";
+import { SEASON_STATUS } from "@/lib/settings";
 import { currentSeason, stockTable, tulips, type Product, type Season } from "@/services/catalog";
 import { COLORS } from "@/services/settings";
 import { saveProductAction } from "../actions";
 
-export const metadata: Metadata = { title: "Товары" };
+export const metadata: Metadata = { title: "Склад" };
 
 type Stock = { planned: number | null; adjusted: number; reserved: number; issued: number; available: number };
 const NONE: Stock = { planned: null, adjusted: 0, reserved: 0, issued: 0, available: 0 };
@@ -80,14 +85,27 @@ export default async function ProductsPage() {
   const season = await currentSeason();
   const rows = season ? await stockTable(season.id) : (await tulips()).map((product) => ({ product, ...NONE }));
   const next = Math.max(0, ...rows.map((r) => r.product.sortOrder)) + 1;
+  // what changed the totals and why: the seller's record of «пересчёт, брак…» (was on the season page until 09.11.2026)
+  const history = season
+    ? await db
+        .select({ a: stockAdjustments, product: products.name, by: users.name })
+        .from(stockAdjustments)
+        .innerJoin(products, eq(products.id, stockAdjustments.productId))
+        .leftJoin(users, eq(users.id, stockAdjustments.createdBy))
+        .where(eq(stockAdjustments.seasonId, season.id))
+        .orderBy(desc(stockAdjustments.createdAt))
+    : [];
   return (
     <div className="space-y-4">
-      <BackLink href="/more">Ещё</BackLink>
-      <h1>Товары</h1>
+      <BackLink href="/more">Настройки</BackLink>
+      <h1>Склад товаров</h1>
+      {/* which season the packs are counted for, in sight (review 09.11.2026, К5) */}
+      <p className={`rounded-xl px-4 py-3 text-lg font-bold ${season ? "bg-mint text-accent-dark" : "bg-warn-bg text-warn"}`}>
+        {season ? `Остатки на сезон «${season.name}» · ${SEASON_STATUS[season.status].toLowerCase()}` : "Сезона нет — остатки не считаются"}
+      </p>
       <p className="text-sm text-muted">
         Товар — цвет и тип тюльпана, например «Жёлтый махровый»; сорта вписываются внутрь. Сайт и бот показывают его в выбранном цвете. Цена — по сетке
-        сезона для типа. Нажмите на товар, чтобы изменить его или количество
-        {season && season.status !== "closed" && ` — пачки считаются на сезон «${season.name}»`}.
+        сезона для типа. Нажмите на товар, чтобы изменить его или количество.
       </p>
 
       <details className="card" open={!rows.length}>
@@ -112,6 +130,21 @@ export default async function ProductsPage() {
           </div>
         </details>
       ))}
+
+      {history.length > 0 && (
+        <section className="card space-y-2">
+          <h2>Изменения количества</h2>
+          <ul className="space-y-1 text-sm">
+            {history.map(({ a, product, by }) => (
+              <li key={a.id} className="text-muted">
+                {dmhm(a.createdAt)} · {product} {a.deltaStems > 0 ? "+" : ""}
+                {a.deltaStems} шт · {a.reason}
+                {by && ` · ${by}`}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

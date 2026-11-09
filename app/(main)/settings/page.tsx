@@ -2,7 +2,7 @@ import { desc } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm, Submit } from "@/components/ActionForm";
-import { Field } from "@/components/ui";
+import { BackLink, Field } from "@/components/ui";
 import { db } from "@/db";
 import { seasons } from "@/db/schema";
 import { requireOwner } from "@/lib/auth";
@@ -17,6 +17,7 @@ export default async function SettingsPage() {
   const list = await db.select().from(seasons).orderBy(desc(seasons.peakDate));
   return (
     <div className="space-y-4">
+      <BackLink href="/more">Настройки</BackLink>
       <h1>Сезоны</h1>
       <ul className="card divide-y divide-line p-0">
         {list.map((s) => (

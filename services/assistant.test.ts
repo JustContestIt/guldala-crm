@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeProvider, type MessagingProvider } from "@/integrations/messaging";
 import type { Model, ModelRequest } from "@/integrations/openai";
 import { handleWebhook } from "@/integrations/wazzup";
-import { storageDays } from "@/lib/calc";
-import { almatyDay } from "@/lib/format";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { BOT_GREETING } from "@/lib/templates";
 
@@ -39,7 +37,7 @@ const order = (extra: object = {}) => ({
   pickupDate: "2027-03-06",
   pickupTime: "10:00",
   pickupMethod: "self_pickup",
-  storage: true,
+  storage: true, // the fridge is gone (review 09.11.2026, С2): a model that still asks for it gets an order without it
   legalType: "ip",
   bin: null,
   orgName: null,
@@ -175,7 +173,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
       { color: "Розовый классический", stock: "много" },
     ]);
     expect(JSON.stringify(out.colors)).not.toMatch(/\d/);
-    expect(m.asked[0]).toMatchObject({ model: "test-model", effort: "" }); // what «Ещё → Ассистент» saved
+    expect(m.asked[0]).toMatchObject({ model: "test-model", effort: "" }); // what «Настройки → Ассистент» saved
     expect(out.pricePerStemToday.classic).toMatchObject({ "40%": 200, "100%": 180, until: "2027-01-31" });
     expect(sent).toEqual([`${BOT_GREETING}\n\nКрасных много.`]);
   });
@@ -193,9 +191,8 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     const yes = script([{ name: "create_order", args: order() }], "Спасибо, Айгуль!");
     await say("да", yes.model);
     const [o] = await db.select().from(s.orders);
-    const fridge = storageDays(almatyDay(new Date()), "2027-03-06") * DEFAULT_SETTINGS.storage_fee_per_day; // paid by the day from today
-    expect(o).toMatchObject({ channel: "whatsapp", createdBy: "client", status: "new", subtotal: 24_000, storageFee: fridge, total: 24_000 + fridge, storageRequested: true, commentClient: "Счёт на ИП\nСорта: Strong Love" });
-    expect(yes.outputs(1)[0]).toMatchObject({ orderNumber: o.number, total: 24_000 + fridge, prepayment: Math.ceil(((24_000 + fridge) * 40) / 100) });
+    expect(o).toMatchObject({ channel: "whatsapp", createdBy: "client", status: "new", subtotal: 24_000, storageFee: 0, total: 24_000, storageRequested: false, commentClient: "Счёт на ИП\nСорта: Strong Love" });
+    expect(yes.outputs(1)[0]).toMatchObject({ orderNumber: o.number, total: 24_000, prepayment: 9_600 });
     const out = await db.select().from(s.messages).where(eq(s.messages.direction, "out")).orderBy(asc(s.messages.createdAt));
     expect(out.map((x) => [x.author, x.templateKey])).toEqual([
       ["assistant", null], // «На какую дату…»

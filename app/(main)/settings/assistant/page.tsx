@@ -44,7 +44,7 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="space-y-4">
-      <BackLink href="/more">Ещё</BackLink>
+      <BackLink href="/more">Настройки</BackLink>
       <h1>Ассистент</h1>
       <section className="card space-y-2 text-sm">
         <p>Бот отвечает на входящие в WhatsApp по правилам и базе знаний ниже и оформляет заказ, как сайт. В чате, где Татьяна ответила сама, бот молчит — включить его снова можно в карточке клиента.</p>
@@ -89,7 +89,13 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
         <Submit>Сохранить</Submit>
       </ActionForm>
       <section className="card space-y-3">
-        <h2>Журнал</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2>Журнал</h2>
+          {/* a plain <a>: a file download, not a page */}
+          <a href={`/settings/assistant/export${only ? `?runs=${only}` : ""}`} className="btn min-h-9 text-sm">
+            Выгрузить в Excel
+          </a>
+        </div>
         <p className="text-xs text-muted">
           Последние 50 запусков бота: что он вызвал, что ответила CRM, ход мысли модели (по-английски, кратко) и ответ. «Правила» — отпечаток базы знаний, ограничений и условий сезона: сменился — бот отвечал уже по другим правилам.
         </p>

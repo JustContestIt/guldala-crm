@@ -29,7 +29,3 @@ export const oneOf = <T extends string>(fd: FormData, k: string, opts: readonly 
   const v = str(fd, k) as T;
   return opts.includes(v) ? v : fallback;
 };
-
-// "packs:<productId>" style fields: [{ key: productId, value: number }]
-export const prefixed = (fd: FormData, prefix: string) =>
-  [...fd.keys()].filter((k) => k.startsWith(prefix)).map((k) => ({ key: k.slice(prefix.length), value: int(fd, k) }));

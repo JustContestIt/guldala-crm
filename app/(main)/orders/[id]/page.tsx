@@ -228,11 +228,11 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             <input type="hidden" name="id" value={o.id} />
             {m.balance > 0 ? (
               <>
-                <Submit name="method" value="cash" confirm={`Принять доплату ${tenge(m.balance)} наличными и выдать ${o.number}?`}>
-                  Доплата · нал.
+                <Submit name="method" value="cash" confirm={`Принять оплату ${tenge(m.balance)} наличными и выдать ${o.number}?`}>
+                  Наличными
                 </Submit>
-                <Submit name="method" value="kaspi_invoice" className="" confirm={`Принять доплату ${tenge(m.balance)} по Kaspi и выдать ${o.number}?`}>
-                  Доплата · Kaspi
+                <Submit name="method" value="kaspi_invoice" className="" confirm={`Принять оплату ${tenge(m.balance)} по Kaspi и выдать ${o.number}?`}>
+                  Kaspi
                 </Submit>
               </>
             ) : (

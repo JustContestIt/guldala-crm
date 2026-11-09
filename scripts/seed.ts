@@ -165,7 +165,7 @@ async function main() {
     ).then(must);
 
   // new: ≥ 100 000 ₸, waits for Tatiana's check
-  await order(1, [["red-classic", 20], ["white-double", 4]], { pickupDate: "2027-03-07", pickupTime: "09:00", storage: true });
+  await order(1, [["red-classic", 20], ["white-double", 4]], { pickupDate: "2027-03-07", pickupTime: "09:00" });
   // confirmed: hold running, Kaspi invoice issued
   const c = await order(2, [["yellow-classic", 4], ["pink-double", 2]], { pct: 60 });
   must(await o.recordPayment(c.id, { amount: 10_000, method: "kaspi_invoice", paid: false, invoiceRef: "KSP-1001", note: "" }, actor));

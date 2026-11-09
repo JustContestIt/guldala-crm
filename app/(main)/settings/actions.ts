@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireOwner } from "@/lib/auth";
-import { day, int, oneOf, prefixed, str, uuid, type FormState } from "@/lib/form";
+import { day, int, oneOf, str, uuid, type FormState } from "@/lib/form";
 import { fromForm, TYPES } from "@/lib/grid";
 import type { SeasonSettings } from "@/lib/settings";
 import { CHANNEL_STATE } from "@/integrations/messaging";
@@ -50,7 +50,7 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
     price_lock_on: oneOf(fd, "price_lock_on", ["prepaid", "confirmed"], "prepaid"),
     client_notifications: oneOf(fd, "client_notifications", ["manual", "auto"], "manual"),
     stock_few_below_pct: int(fd, "stock_few_below_pct"),
-    storage_fee_per_day: int(fd, "storage_fee_per_day"),
+    storage_fee_per_day: 0, // the fridge is gone (review 09.11.2026, С2): nobody can ask for it, a saved season charges nothing
   };
   return answer(await svc.updateSeason(id, seasonFields(fd), settings), "Сохранено");
 }
@@ -68,23 +68,6 @@ export async function saveGridAction(_: FormState, fd: FormData): Promise<FormSt
   if (!seasonId) return { error: "Сезон не найден" };
   const r = fromForm(fd);
   return "error" in r ? { error: r.error } : answer(await svc.saveGrid(seasonId, r.rows), "Сетка сохранена");
-}
-
-export async function setPlansAction(_: FormState, fd: FormData): Promise<FormState> {
-  await requireOwner();
-  const seasonId = uuid(fd, "seasonId");
-  if (!seasonId) return { error: "Сезон не найден" };
-  const plans = prefixed(fd, "plan:").filter((p) => /^[0-9a-f-]{36}$/i.test(p.key) && str(fd, `plan:${p.key}`) !== "");
-  if (!plans.length) return { error: "Нечего сохранять" };
-  return answer(await svc.setPlans(seasonId, new Map(plans.map((p) => [p.key, p.value]))), "План сохранён");
-}
-
-export async function addAdjustmentAction(_: FormState, fd: FormData): Promise<FormState> {
-  const user = await requireOwner();
-  const seasonId = uuid(fd, "seasonId");
-  const productId = uuid(fd, "productId");
-  if (!seasonId || !productId) return { error: "Выберите цвет" };
-  return answer(await svc.addAdjustment(seasonId, productId, int(fd, "delta"), str(fd, "reason", 300), user.id), "Корректировка записана");
 }
 
 export async function saveProductAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -111,7 +94,7 @@ export async function connectWhatsappAction(): Promise<FormState> {
   return r.ok ? done(`Вебхуки подписаны. Канал: ${CHANNEL_STATE[r.state] ?? r.state}`) : (refresh(), { error: r.error });
 }
 
-// «Ещё → Ассистент»: saved only after the chosen model answered a short question
+// «Настройки → Ассистент»: saved only after the chosen model answered a short question
 export async function assistantAction(_: FormState, fd: FormData): Promise<FormState> {
   await requireOwner();
   const r = await saveAssistantSettings({ mode: oneOf(fd, "mode", MODES, "off"), model: str(fd, "model", 100), effort: oneOf(fd, "effort", EFFORTS, "") });

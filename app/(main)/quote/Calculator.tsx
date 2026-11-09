@@ -59,20 +59,21 @@ export function Calculator(p: { products: ProductOpt[]; rules: Rule[]; settings:
         <input type="date" value={date} min={p.pickupFrom} max={p.pickupTo} onChange={(e) => setDate(e.target.value)} className="input" />
       </label>
 
-      <div className="card space-y-1">
+      {/* the prepayment and the rest are what the client asks about: big, apart from each other (review 09.11.2026, К26) */}
+      <div className="card space-y-2">
         <div className="flex items-baseline justify-between">
           <span className="text-muted">Итого</span>
           <span className="text-3xl font-extrabold tabular-nums">{tenge(q.total)}</span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted">Предоплата {pct}%</span>
-          <b className="tabular-nums">{tenge(q.prepayment)}</b>
+        <div className="flex items-baseline justify-between gap-3 rounded-xl bg-mint px-3 py-2 text-accent-dark">
+          <span className="text-lg font-semibold">Предоплата {pct}%</span>
+          <span className="text-2xl font-extrabold tabular-nums">{tenge(q.prepayment)}</span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted">Остаток при выдаче</span>
-          <span className="tabular-nums">{tenge(q.total - q.prepayment)}</span>
+        <div className="flex items-baseline justify-between gap-3 px-3">
+          <span className="text-lg font-semibold">Остаток оплаты при выдаче</span>
+          <span className="text-xl font-bold tabular-nums">{tenge(q.total - q.prepayment)}</span>
         </div>
-        {q.priced.validUntil && <p className="pt-1 text-sm text-muted">Цена действует до {dm(q.priced.validUntil)}</p>}
+        {q.priced.validUntil && <p className="px-3 font-semibold">Цена действует до {dm(q.priced.validUntil)}</p>}
       </div>
 
       {warnings.length > 0 && (

@@ -2,6 +2,7 @@
 import { and, asc, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, orderItems, orders, products, seasons } from "@/db/schema";
+import { toCsv } from "@/lib/csv";
 import { normalizePhone } from "@/lib/format";
 import type { Season } from "./catalog";
 import { packsSql } from "./orders";
@@ -126,15 +127,13 @@ export async function importClients(text: string) {
   return { ok: true as const, added, updated, same: rows.length - added - updated, skipped };
 }
 
-// «Выгрузить»: the same list as on screen, for Excel (semicolons, BOM so Cyrillic opens right)
+// «Выгрузить»: the same list as on screen, for Excel
 export function clientsCsv(rows: Awaited<ReturnType<typeof clientList>>) {
-  const cell = (v: string | number) => (/[";\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
   const day = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
-  const head = ["Телефон", "Имя", "Магазин", "Тип", "Заказов", "Сумма, ₸", "Последний заказ", "Откуда", "Добавлен", "Заметки"];
-  const lines = rows.map((r) =>
-    [r.phone, r.name, r.company ?? "", CLIENT_TYPES[r.clientType], r.orders, r.spent, day(r.lastOrderAt), CLIENT_SOURCES[r.source], day(r.createdAt), r.notes].map(cell).join(";"),
+  return toCsv(
+    ["Телефон", "Имя", "Магазин", "Тип", "Заказов", "Сумма, ₸", "Последний заказ", "Откуда", "Добавлен", "Заметки"],
+    rows.map((r) => [r.phone, r.name, r.company ?? "", CLIENT_TYPES[r.clientType], r.orders, r.spent, day(r.lastOrderAt), CLIENT_SOURCES[r.source], day(r.createdAt), r.notes]),
   );
-  return "\uFEFF" + [head.join(";"), ...lines].join("\r\n");
 }
 
 export async function previousSeason(cur: Season) {

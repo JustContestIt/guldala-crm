@@ -83,7 +83,7 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
     case "payment_reminder":
       return `Напоминаю по заказу ${o.number}: бронь держится до ${o.holdUntil ? dmyhm(o.holdUntil) : "—"}. Предоплата ${tenge(o.prepaymentDue)} по счёту Kaspi. После срока цветы вернутся в продажу.`;
     case "pickup_reminder":
-      return `Завтра ${pickup ?? ""} выдача заказа ${o.number}: ${short(o.lines)}. ${toPay(o.balance)}${o.balance > 0 ? " (нал или Kaspi)" : ""}. Теплица открыта ${o.pickupHours}. Нужно ли хранение в холодильнике?`;
+      return `Завтра ${pickup ?? ""} выдача заказа ${o.number}: ${short(o.lines)}. ${toPay(o.balance)}${o.balance > 0 ? " (нал или Kaspi)" : ""}. Теплица открыта ${o.pickupHours}.`;
     case "ready":
       return `Заказ ${o.number} собран и ждёт вас: ${short(o.lines)}. ${toPay(o.balance)}. Выдача ${o.pickupHours}, ${PLACE}.`;
   }

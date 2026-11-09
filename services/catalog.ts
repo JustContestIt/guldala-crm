@@ -82,7 +82,7 @@ export async function stockTable(seasonId: string) {
       planned: input.plans.find((x) => x.productId === p.id)?.plannedStems ?? null,
       adjusted: sum(input.adjustments.filter((a) => a.productId === p.id), (a) => a.deltaStems),
       reserved: sum(mine.filter((i) => RESERVING.includes(i.status)), (i) => i.qtyStems),
-      issued: sum(mine.filter((i) => i.status === "issued"), (i) => i.issuedStems),
+      issued: sum(mine.filter((i) => !RESERVING.includes(i.status)), (i) => i.issuedStems),
       available: free.get(p.id) ?? 0,
     };
   });

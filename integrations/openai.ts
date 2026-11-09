@@ -60,10 +60,16 @@ export function chatModels(list: { id: string; shutdown_date?: string | null }[]
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+// shortcut: the account's model list is kept in memory for an hour — the settings page re-renders on every journal filter tap
+// and asked OpenAI each time (review 09.11.2026, К14); a model OpenAI adds shows up within the hour
+let models: { at: number; today: string; list: ReturnType<typeof chatModels> } | null = null;
+
 export async function listModels(today: string) {
+  if (models && models.today === today && Date.now() - models.at < 3_600_000) return models.list;
   const all = [];
   for await (const m of openai().models.list()) all.push(m);
-  return chatModels(all, today);
+  models = { at: Date.now(), today, list: chatModels(all, today) };
+  return models.list;
 }
 
 // $ per 1M tokens, input / output (developers.openai.com/api/docs/pricing, 24.10.2026): a hint next to the name, not a bill

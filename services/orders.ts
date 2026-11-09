@@ -457,12 +457,6 @@ export const issueOrder = (orderId: string, method: PayMethod | null, actor: Act
     await setStatus(tx, o, "issued", actor, { issuedAt: new Date() });
   });
 
-// «Не приехал» (spec §5.5): a line in the journal, the order stays as it is
-export const noShow = (orderId: string, day: string, actor: Actor) =>
-  mutate(orderId, async (tx, o) => {
-    await log(tx, o.id, actor, "note", { payload: { noShow: day } });
-  });
-
 const EDITABLE: Status[] = ["new", "confirmed", "prepaid", "ready"];
 
 export const setDiscount = (orderId: string, amount: number, reason: string, actor: Actor) =>

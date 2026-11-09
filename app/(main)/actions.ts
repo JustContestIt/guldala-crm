@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser, type User } from "@/lib/auth";
+import { dm } from "@/lib/format";
 import { day, hm, int, oneOf, str, uuid, type FormState } from "@/lib/form";
 import { messaging } from "@/integrations/messaging";
 import { CLIENT_TYPES, updateClient, type ClientType } from "@/services/clients";
@@ -38,7 +39,7 @@ export async function createOrderAction(_: FormState, fd: FormData): Promise<For
       pickupDate: day(fd, "pickupDate"),
       pickupTime: hm(fd, "pickupTime"),
       pickupMethod: oneOf(fd, "pickupMethod", ["self_pickup", "client_truck"], "self_pickup"),
-      storage: fd.get("storage") === "on",
+      storage: false, // no fridge (review 09.11.2026, С2)
       commentClient: str(fd, "commentClient", 2000),
       commentInternal: str(fd, "commentInternal", 2000),
       channel: oneOf(fd, "channel", ["whatsapp", "instagram", "telegram", "phone", "in_person", "site"], "whatsapp"),
@@ -112,7 +113,8 @@ export async function noShowAction(_: FormState, fd: FormData): Promise<FormStat
   const id = uuid(fd, "id");
   const d = day(fd, "day");
   if (!id || !d) return noOrder;
-  return reply(await o.noShow(id, d, actor), "Записано: не приехал");
+  // review 09.11.2026, К20: the client didn't come — cancelled, the flowers go back on sale, a paid prepayment stays as compensation
+  return reply(await o.cancelOrder(id, `Не приехал за заказом ${dm(d)}`, actor), "Заказ отменён, цветы вернулись на склад");
 }
 
 export async function discountAction(_: FormState, fd: FormData): Promise<FormState> {

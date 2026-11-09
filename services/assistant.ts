@@ -10,7 +10,8 @@ import { assistantRuns, clients, conversations, messages, orders, type RunStep }
 import { chatAllowed, messaging, type MessagingProvider } from "@/integrations/messaging";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORTS, respond, type Effort, type Model, type Tool } from "@/integrations/openai";
 import type { TulipType } from "@/lib/calc";
-import { almatyDay, dmhm, prettyPhone, tenge } from "@/lib/format";
+import { toCsv } from "@/lib/csv";
+import { almatyDay, dmhm, dmyhm, prettyPhone, tenge } from "@/lib/format";
 import { num, obj, str } from "@/lib/json";
 import { computeQuote, type ProductOpt } from "@/lib/quote";
 import { STATUS_LABEL } from "@/lib/status";
@@ -50,7 +51,6 @@ const TOOLS: Tool[] = [
       items: ITEMS,
       prepaymentPct: PCT,
       pickupDate: nullable("string", "дата вывоза ГГГГ-ММ-ДД, если уже известна"),
-      storage: { type: "boolean", description: "холодильник до вывоза (платно, по дням от сегодня до вывоза)" },
     }),
   },
   {
@@ -67,7 +67,6 @@ const TOOLS: Tool[] = [
       pickupDate: nullable("string", "дата вывоза ГГГГ-ММ-ДД"),
       pickupTime: nullable("string", "время вывоза ЧЧ:ММ"),
       pickupMethod: { type: "string", enum: ["self_pickup", "client_truck"], description: "самовывоз или своя машина клиента" },
-      storage: { type: "boolean", description: "холодильник до вывоза" },
       legalType: { type: "string", enum: ["ip", "too", "person"], description: "счёт на ИП, на ТОО или на физическое лицо" },
       bin: nullable("string", "БИН ТОО, 12 цифр"),
       orgName: nullable("string", "название ТОО"),
@@ -130,10 +129,9 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
     const date = day(a.pickupDate);
     const pct = num(a.prepaymentPct);
     const s = c.season;
-    const q = computeQuote({ lines: l.lines, products, rules: await seasonRules(s.id), settings: s.settings, today: almatyDay(new Date()), pct, date, pickupFrom: s.pickupFrom, pickupTo: s.pickupTo, storage: a.storage === true });
+    const q = computeQuote({ lines: l.lines, products, rules: await seasonRules(s.id), settings: s.settings, today: almatyDay(new Date()), pct, date, pickupFrom: s.pickupFrom, pickupTo: s.pickupTo });
     return {
       lines: q.priced.lines.map((x) => ({ color: x.name, packs: x.qtyPacks, stems: x.qtyStems, pricePerStem: x.unitPrice, sum: x.lineTotal })),
-      ...(q.storage.fee > 0 && { fridge: { days: q.storage.days, fee: q.storage.fee } }),
       total: q.total,
       prepaymentPct: pct,
       prepayment: q.prepayment,
@@ -183,7 +181,7 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
         pickupDate: pickupDate!,
         pickupSlot: pickupTime,
         pickupMethod: a.pickupMethod === "client_truck" ? "client_truck" : "self_pickup",
-        storage: a.storage === true,
+        storage: false, // no fridge (review 09.11.2026, С2)
         client: { company: cl.company ?? "", name: cl.name, phone: c.phone, legalType, bin, orgName },
         comment: str(a.comment, 1000),
         prefillToken: "",
@@ -246,7 +244,6 @@ function instructions(season: Season) {
     `- Без предоплаты бронь держится ${s.hold_days} дн. Цена фиксируется ${s.price_lock_on === "prepaid" ? "при предоплате" : "при подтверждении брони"}.`,
     `- Каждый заказ Татьяна проверяет и подтверждает сама; до подтверждения товар не отложен.`,
     `- Пик — ${season.peakDate}. Выдача с ${season.pickupFrom} по ${season.pickupTo}, ${s.pickup_hours}${s.peak_hours_from ? `; с ${s.peak_hours_from} — ${s.pickup_hours_peak}` : ""}.`,
-    `- Холодильник до вывоза — ${tenge(s.storage_fee_per_day)} в сутки за заказ, считается от дня заказа до дня вывоза и входит в сумму заказа.`,
   ];
   return [promptFile("restrictions.md"), promptFile("knowledge.md"), facts.join("\n")].join("\n\n");
 }
@@ -370,11 +367,12 @@ export async function replyTo(m: Inbound, deps: { model?: Model; provider?: Mess
 export const RUN_FILTERS = ["error", "silent", "handoff"] as const;
 export type RunFilter = (typeof RUN_FILTERS)[number];
 
-// The run journal, newest first: all chats on «Ещё → Ассистент» (with a filter), one chat in the client card
+// The run journal, newest first: all chats on «Настройки → Ассистент» (with a filter), one chat in the client card
 export async function runLog({ conversationId, only, limit = 50 }: { conversationId?: string; only?: RunFilter; limit?: number }) {
   return db
-    .select({ run: assistantRuns, clientId: clients.id, name: clients.name, company: clients.company, phone: clients.phone })
+    .select({ run: assistantRuns, clientId: clients.id, name: clients.name, company: clients.company, phone: clients.phone, message: messages.text })
     .from(assistantRuns)
+    .innerJoin(messages, eq(messages.id, assistantRuns.messageId))
     .innerJoin(conversations, eq(conversations.id, assistantRuns.conversationId))
     .innerJoin(clients, eq(clients.id, conversations.clientId))
     .where(
@@ -387,7 +385,29 @@ export async function runLog({ conversationId, only, limit = 50 }: { conversatio
     .limit(limit);
 }
 
-// «Ещё → Ассистент»: off / draft / auto, the model and its reasoning effort (app_state "assistant")
+const OUTCOME = { sent: "ответил", draft: "черновик", silent: "промолчал", error: "ошибка" } as const;
+
+// «Выгрузить в Excel» under the journal (review 09.11.2026, К15): one row per run, the client's message and the bot's answer side by side
+export function runsCsv(rows: Awaited<ReturnType<typeof runLog>>) {
+  return toCsv(
+    ["Дата", "Клиент", "Телефон", "Сообщение клиента", "Итог", "Почему", "Инструменты", "Ответ бота", "Модель", "Режим", "Секунд"],
+    rows.map(({ run, ...r }) => [
+      dmyhm(run.createdAt),
+      r.company || r.name,
+      prettyPhone(r.phone),
+      r.message,
+      OUTCOME[run.outcome],
+      run.reason,
+      run.steps.flatMap((s) => s.calls.map((c) => c.name)).join(", "),
+      run.steps.map((s) => s.text).filter(Boolean).join("\n"),
+      run.effort ? `${run.model}/${run.effort}` : run.model,
+      run.mode,
+      (run.ms / 1000).toFixed(1).replace(".", ","),
+    ]),
+  );
+}
+
+// «Настройки → Ассистент»: off / draft / auto, the model and its reasoning effort (app_state "assistant")
 export async function assistantSettings(): Promise<AssistantSettings> {
   const v = await readState("assistant");
   return {

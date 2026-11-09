@@ -83,7 +83,10 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                   </li>
                 ))}
               </ul>
-              <p className={`text-lg font-bold ${bal > 0 ? "text-up" : "text-accent"}`}>{bal > 0 ? `К доплате ${tenge(bal)}` : "Оплачен полностью"}</p>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <p className={`text-lg font-bold ${bal > 0 ? "text-up" : "text-accent"}`}>{bal > 0 ? `К доплате ${tenge(bal)}` : "Оплачен полностью"}</p>
+                {bal > 0 && <p className="font-semibold tabular-nums text-muted">оплачено {tenge(r.paid)}</p>}
+              </div>
               {(r.storageRequested || r.pickupMethod === "client_truck") && (
                 <p className="flex gap-2 text-sm font-semibold">
                   {r.storageRequested && <span className="rounded-full bg-mint px-2.5 py-0.5 text-accent-dark">холодильник</span>}
@@ -95,11 +98,11 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                   <input type="hidden" name="id" value={r.id} />
                   {bal > 0 ? (
                     <>
-                      <Submit name="method" value="cash" confirm={`Принять доплату ${tenge(bal)} наличными и выдать ${r.number}?`}>
-                        Доплата · нал.
+                      <Submit name="method" value="cash" confirm={`Принять оплату ${tenge(bal)} наличными и выдать ${r.number}?`}>
+                        Наличными
                       </Submit>
-                      <Submit name="method" value="kaspi_invoice" className="" confirm={`Принять доплату ${tenge(bal)} по Kaspi и выдать ${r.number}?`}>
-                        Доплата · Kaspi
+                      <Submit name="method" value="kaspi_invoice" className="" confirm={`Принять оплату ${tenge(bal)} по Kaspi и выдать ${r.number}?`}>
+                        Kaspi
                       </Submit>
                     </>
                   ) : (
@@ -109,14 +112,17 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                 <ActionForm action={noShowAction}>
                   <input type="hidden" name="id" value={r.id} />
                   <input type="hidden" name="day" value={day} />
-                  <Submit className="" confirm={`${r.number}: не приехал?`}>
-                    Не приехал
+                  <Submit
+                    className=""
+                    confirm={`Клиент не приехал: отменить ${r.number}? Цветы вернутся на склад${r.paid > 0 ? `, внесённые ${tenge(r.paid)} остаются у вас` : ""}.`}
+                  >
+                    Отменить заказ
                   </Submit>
                 </ActionForm>
               </div>
               {r.status !== "confirmed" && (
                 <details>
-                  <summary className="btn">Частично</summary>
+                  <summary className="btn">Частичная отгрузка</summary>
                   <ActionForm action={issueAction} className="mt-2 space-y-2">
                     <input type="hidden" name="id" value={r.id} />
                     <input type="hidden" name="partial" value="1" />

@@ -1,17 +1,12 @@
-import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ActionForm, Submit } from "@/components/ActionForm";
 import { BackLink, Field } from "@/components/ui";
-import { db } from "@/db";
-import { products, stockAdjustments, users } from "@/db/schema";
 import { requireOwner } from "@/lib/auth";
-import { dmhm } from "@/lib/format";
 import { cellName, toMatrix, TYPES } from "@/lib/grid";
 import { SEASON_STATUS } from "@/lib/settings";
-import { getSeason, seasonRules, stockTable } from "@/services/catalog";
-import { expireHolds } from "@/services/orders";
-import { addAdjustmentAction, saveGridAction, seasonStatusAction, setPlansAction, updateSeasonAction } from "../../actions";
+import { getSeason, seasonRules } from "@/services/catalog";
+import { saveGridAction, seasonStatusAction, updateSeasonAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Сезон" };
 
@@ -20,24 +15,11 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const season = /^[0-9a-f-]{36}$/i.test(id) ? await getSeason(id) : null;
   if (!season) notFound();
-  await expireHolds();
-  const [rules, stock, history] = await Promise.all([
-    seasonRules(id),
-    stockTable(id),
-    db
-      .select({ a: stockAdjustments, product: products.name, by: users.name })
-      .from(stockAdjustments)
-      .innerJoin(products, eq(products.id, stockAdjustments.productId))
-      .leftJoin(users, eq(users.id, stockAdjustments.createdBy))
-      .where(eq(stockAdjustments.seasonId, id))
-      .orderBy(desc(stockAdjustments.createdAt)),
-  ]);
+  const rules = await seasonRules(id);
   const s = season.settings;
   const grid = toMatrix(rules);
   const bands = [...grid.bands, null]; // + a blank one for a new band
   const periods = [...grid.periods, null];
-  const packs = (stems: number, size: number) => Math.floor(stems / size);
-  const planEditable = (planned: number | null) => season.status === "planning" || planned === null;
 
   return (
     <div className="space-y-4">
@@ -65,13 +47,15 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
         </ActionForm>
       </div>
 
-      <details className="card">
-        <summary className="font-semibold">Даты и параметры</summary>
-        <ActionForm action={updateSeasonAction} className="mt-3 grid grid-cols-2 gap-3">
-          <input type="hidden" name="id" value={season.id} />
-          <Field label="Название" className="col-span-2">
-            <input name="name" className="input" defaultValue={season.name} required />
-          </Field>
+      {/* the name in sight, the rest folded; the fields inside a closed <details> are still sent (review 09.11.2026, К12) */}
+      <ActionForm action={updateSeasonAction} className="card space-y-3">
+        <input type="hidden" name="id" value={season.id} />
+        <Field label="Название сезона">
+          <input name="name" className="input text-lg font-semibold" defaultValue={season.name} required />
+        </Field>
+        <details>
+          <summary className="font-semibold">Даты и параметры</summary>
+          <div className="mt-3 grid grid-cols-2 gap-3">
           <Field label="Приём заказов с">
             <input name="ordersOpenFrom" type="date" className="input" defaultValue={season.ordersOpenFrom} required />
           </Field>
@@ -111,9 +95,6 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
           <Field label="На сайте «мало» ниже, % плана">
             <input name="stock_few_below_pct" inputMode="numeric" className="input" defaultValue={s.stock_few_below_pct ?? 30} />
           </Field>
-          <Field label="Холодильник, ₸ в сутки">
-            <input name="storage_fee_per_day" inputMode="numeric" className="input" defaultValue={s.storage_fee_per_day} />
-          </Field>
           <Field label="Предоплата от, %">
             <input name="prepayment_min_pct" inputMode="numeric" className="input" defaultValue={s.prepayment_min_pct} />
           </Field>
@@ -143,11 +124,10 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
             <input type="checkbox" name="issue_on_full_payment_allowed" defaultChecked={s.issue_on_full_payment_allowed} className="size-5" />
             Выдавать бронь без предоплаты при полной оплате на месте
           </label>
-          <div className="col-span-2">
-            <Submit>Сохранить</Submit>
           </div>
-        </ActionForm>
-      </details>
+        </details>
+        <Submit>Сохранить</Submit>
+      </ActionForm>
 
       <section className="card space-y-3">
         <h2>Сетка цен, ₸ за штуку</h2>
@@ -220,92 +200,6 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
         </ActionForm>
       </section>
 
-      <section className="card space-y-3">
-        <h2>Остатки по цветам, пачек</h2>
-        <ActionForm action={setPlansAction} className="space-y-3">
-          <input type="hidden" name="seasonId" value={season.id} />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted">
-                <tr>
-                  <th className="py-1 pr-2 font-normal">Цвет</th>
-                  <th className="px-1 font-normal">Свободно</th>
-                  <th className="px-1 font-normal">План</th>
-                  <th className="px-1 font-normal">Резерв</th>
-                  <th className="px-1 font-normal">Выдано</th>
-                  <th className="pl-1 font-normal">Корр.</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {stock.map((r) => {
-                  const size = r.product.packSize;
-                  const low = r.planned !== null && r.available < r.planned * 0.1;
-                  return (
-                    <tr key={r.product.id} className={r.product.isActive ? "" : "text-muted"}>
-                      <td className="py-2 pr-2">{r.product.name}</td>
-                      <td className={`px-1 font-semibold ${low ? "text-up" : ""}`}>{packs(Math.max(0, r.available), size)}</td>
-                      <td className="px-1">
-                        {planEditable(r.planned) ? (
-                          <input
-                            name={`plan:${r.product.id}`}
-                            inputMode="numeric"
-                            aria-label={`План, пачек: ${r.product.name}`}
-                            className="input w-20 min-h-9 py-1"
-                            defaultValue={r.planned === null ? "" : packs(r.planned, size)}
-                          />
-                        ) : (
-                          packs(r.planned!, size)
-                        )}
-                      </td>
-                      <td className="px-1">{packs(r.reserved, size)}</td>
-                      <td className="px-1">{packs(r.issued, size)}</td>
-                      <td className="pl-1">{r.adjusted ? `${r.adjusted > 0 ? "+" : ""}${r.adjusted} шт` : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {stock.some((r) => planEditable(r.planned)) && <Submit>Сохранить план</Submit>}
-        </ActionForm>
-
-        <details>
-          <summary className="text-sm font-semibold">Корректировка остатка</summary>
-          <ActionForm action={addAdjustmentAction} className="mt-3 grid grid-cols-2 gap-3">
-            <input type="hidden" name="seasonId" value={season.id} />
-            <Field label="Цвет" className="col-span-2">
-              <select name="productId" className="input" required>
-                {stock.map((r) => (
-                  <option key={r.product.id} value={r.product.id}>
-                    {r.product.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="± штук">
-              <input name="delta" inputMode="numeric" className="input" placeholder="-30" required />
-            </Field>
-            <Field label="Причина">
-              <input name="reason" className="input" placeholder="пересорт, списание…" required />
-            </Field>
-            <div className="col-span-2">
-              <Submit>Записать</Submit>
-            </div>
-          </ActionForm>
-        </details>
-
-        {history.length > 0 && (
-          <ul className="space-y-1 text-sm">
-            {history.map(({ a, product, by }) => (
-              <li key={a.id} className="text-muted">
-                {dmhm(a.createdAt)} · {product} {a.deltaStems > 0 ? "+" : ""}
-                {a.deltaStems} шт · {a.reason}
-                {by && ` · ${by}`}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }

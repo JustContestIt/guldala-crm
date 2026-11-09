@@ -17,7 +17,7 @@ export default async function WhatsappPage() {
   const tests = process.env.WAZZUP_TEST_PHONES;
   return (
     <div className="space-y-4">
-      <BackLink href="/more">Ещё</BackLink>
+      <BackLink href="/more">Настройки</BackLink>
       <h1>WhatsApp</h1>
       <section className="card space-y-1.5 text-sm">
         <div className="flex justify-between gap-3">

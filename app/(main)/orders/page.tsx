@@ -12,7 +12,7 @@ import { DROP_LABEL, STATUS_HINT, STATUS_LABEL } from "@/lib/status";
 import { currentSeason } from "@/services/catalog";
 import { orderList, pendingInvoices, type OrderListRow } from "@/services/orders";
 
-export const metadata: Metadata = { title: "Заказы" };
+export const metadata: Metadata = { title: "Заказы (сайт + ручные)" };
 
 const who = (r: { company: string | null; name: string; phone?: string }) => r.company || r.name || (r.phone ? prettyPhone(r.phone) : "—");
 const small = "min-h-9 w-full text-xs";
@@ -93,8 +93,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h1>Заказы</h1>
-        <Link href="/orders/new" className="btn btn-primary">
+        <h1>Заказы (сайт + ручные)</h1>
+        <Link href="/orders/new" className="btn btn-primary min-h-12 shrink-0 px-6 text-base font-bold">
           + Заказ
         </Link>
       </div>
@@ -119,6 +119,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           </Link>
         )}
       </form>
+
+      {/* on top: under a long board it would never be found (review 09.11.2026, К24) */}
+      <Link href={href({ closed: closed ? "" : "1" })} className="inline-flex rounded-full border border-line bg-white px-3 py-1.5 text-sm">
+        {closed ? "Скрыть истёкшие и отменённые" : "Показать истёкшие и отменённые"}
+      </Link>
 
       <p className="text-xs text-muted">
         Заказ идёт слева направо: кнопка на карточке делает следующий шаг. Карточку можно и перетащить в другую колонку — на телефоне подержите палец.
@@ -185,10 +190,6 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         </section>
       )}
       </DragBoard>
-
-      <Link href={href({ closed: closed ? "" : "1" })} className="inline-flex rounded-full border border-line bg-white px-3 py-1.5 text-sm">
-        {closed ? "Скрыть истёкшие и отменённые" : "Показать истёкшие и отменённые"}
-      </Link>
     </div>
   );
 }

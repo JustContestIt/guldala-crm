@@ -157,6 +157,11 @@ describe("availableStems", () => {
     expect(m.get("red")).toBe(2730);
   });
 
+  it("a cancelled order gives back only what was not handed out yet", () => {
+    const m = availableStems({ plans, adjustments: [], items: [item("red", "cancelled", 300, { issuedStems: 90 })] });
+    expect(m.get("red")).toBe(2910);
+  });
+
   it("counts a substituted line against the substitute", () => {
     const m = availableStems({ plans, adjustments: [], items: [item("red", "confirmed", 300, { substituteProductId: "pink" })] });
     expect(m.get("red")).toBe(3000);
