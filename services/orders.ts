@@ -204,7 +204,7 @@ export type NewOrder = {
   prefillToken?: string | null;
 };
 
-// Spec §5.3: price by today's grid, then `new` (≥ threshold or short of stock) or `confirmed` with a hold
+// Spec §5.3: price by today's grid, always `new` (the operator confirms); the site's form is refused when short of stock
 export function createOrder(input: NewOrder, actor: Actor | null) {
   return run<{ id: string; number: string; status: Status; shortages: string[] }>(async () => {
     const phone = normalizePhone(input.phone) ?? fail("Телефон: казахстанский номер, +7 и 10 цифр");
@@ -240,8 +240,8 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
       );
       const byClient = input.createdBy === "client";
       if (short.length && byClient) fail(`Не хватает: ${short.join("; ")}`);
-      const status: Status = short.length || priced.subtotal >= s.check_threshold_amount ? "new" : "confirmed";
-      const now = new Date();
+      // every order lands in «Новый» and is confirmed by hand (Nikita 09.11.2026, instead of the 100 000 ₸ threshold); no stock is held until then
+      const status: Status = "new";
 
       const [client] = await tx
         .insert(clients)
@@ -280,7 +280,6 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
           storageRequested: input.storage,
           commentClient: input.commentClient,
           commentInternal: input.commentInternal,
-          ...(status === "confirmed" && { confirmedAt: now, holdUntil: holdFrom(now, season), priceLockedAt: lockOnConfirm(season, now) }),
         })
         .returning();
       await tx.insert(orderItems).values(
@@ -301,7 +300,6 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
         payload: {
           created: true,
           ...(short.length && { shortages: short }),
-          ...(status === "new" && !short.length && { threshold: s.check_threshold_amount }),
           ...(input.prefillToken && { prefill: input.prefillToken }),
         },
       });
@@ -346,7 +344,7 @@ export const cancelOrder = (orderId: string, reason: string, actor: Actor) =>
 
 export const markReady = (orderId: string, actor: Actor) =>
   mutate(orderId, async (tx, o, season) => {
-    if (!season.settings.ready_status_enabled) fail("Статус «Готов к выдаче» выключен в настройках сезона");
+    if (!season.settings.ready_status_enabled) fail("Колонка «На выдачу» выключена в настройках сезона");
     await setStatus(tx, o, "ready", actor);
   });
 

@@ -42,7 +42,6 @@ export function OrderForm(p: {
 
   const q = computeQuote({ ...p, lines, pct: f.pct, date: f.pickupDate || null, storage: f.storage });
   const blocking = [...q.problems, ...q.priced.missing.map(() => "Нет цены на сегодня — проверьте сетку цен")];
-  const willBeNew = q.shortages.length > 0 || q.overThreshold;
 
   return (
     <ActionForm action={createOrderAction} className="space-y-4">
@@ -163,10 +162,9 @@ export function OrderForm(p: {
           <span className="text-muted">Предоплата {f.pct}%</span>
           <b className="tabular-nums">{tenge(q.prepayment)}</b>
         </div>
-        <p className={`pt-2 text-sm ${willBeNew ? "text-warn" : "text-accent"}`}>
-          {willBeNew
-            ? `Сохранится как «Новый» — ${q.shortages.length ? `не хватает: ${q.shortages.join("; ")}` : `от ${tenge(p.settings.check_threshold_amount)} нужна проверка`}. Подтвердите позже в карточке.`
-            : `Сохранится как «Бронь» на ${p.settings.hold_days} дн. без предоплаты.`}
+        <p className={`pt-2 text-sm ${q.shortages.length ? "text-warn" : "text-muted"}`}>
+          Заказ появится в «Новых»{q.shortages.length > 0 && ` — не хватает: ${q.shortages.join("; ")}`}. Подтвердите его на доске или в карточке — тогда товар
+          отложится на {p.settings.hold_days} дн.
         </p>
       </section>
 

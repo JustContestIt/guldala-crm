@@ -194,7 +194,7 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     await say("да", yes.model);
     const [o] = await db.select().from(s.orders);
     const fridge = storageDays(almatyDay(new Date()), "2027-03-06") * DEFAULT_SETTINGS.storage_fee_per_day; // paid by the day from today
-    expect(o).toMatchObject({ channel: "whatsapp", createdBy: "client", status: "confirmed", subtotal: 24_000, storageFee: fridge, total: 24_000 + fridge, storageRequested: true, commentClient: "Счёт на ИП\nСорта: Strong Love" });
+    expect(o).toMatchObject({ channel: "whatsapp", createdBy: "client", status: "new", subtotal: 24_000, storageFee: fridge, total: 24_000 + fridge, storageRequested: true, commentClient: "Счёт на ИП\nСорта: Strong Love" });
     expect(yes.outputs(1)[0]).toMatchObject({ orderNumber: o.number, total: 24_000 + fridge, prepayment: Math.ceil(((24_000 + fridge) * 40) / 100) });
     const out = await db.select().from(s.messages).where(eq(s.messages.direction, "out")).orderBy(asc(s.messages.createdAt));
     expect(out.map((x) => [x.author, x.templateKey])).toEqual([

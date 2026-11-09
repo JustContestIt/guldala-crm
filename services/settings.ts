@@ -9,7 +9,7 @@ import { getSeason } from "./catalog";
 
 type Res = { ok: true } | { ok: false; error: string };
 const ok: Res = { ok: true };
-const no = (error: string): Res => ({ ok: false, error });
+const no = (error: string) => ({ ok: false as const, error });
 
 // app_state: small app-wide facts — the WhatsApp channel, the last webhook, the assistant's settings. A save merges keys.
 export const saveState = (key: string, value: Record<string, unknown>) =>
@@ -30,7 +30,7 @@ function seasonProblem(f: SeasonFields, s: SeasonSettings) {
   if (!(f.ordersOpenFrom && f.peakDate && f.pickupFrom && f.pickupTo)) return "Заполните все даты";
   if (!(f.pickupFrom <= f.pickupTo)) return "Окно выдачи: «с» позже «по»";
   if (!(f.ordersOpenFrom <= f.pickupFrom)) return "Приём заказов должен начаться до выдачи";
-  const ints = [s.pack_size, s.min_order_stems, s.hold_days, s.check_threshold_amount, s.prepayment_min_pct, s.prepayment_max_pct, s.prepayment_step, s.stock_few_below_pct];
+  const ints = [s.pack_size, s.min_order_stems, s.hold_days, s.prepayment_min_pct, s.prepayment_max_pct, s.prepayment_step, s.stock_few_below_pct];
   if (ints.some((n) => !Number.isInteger(n) || n < 1)) return "Числовые параметры — целые числа больше нуля";
   if (!Number.isInteger(s.storage_fee_per_day) || s.storage_fee_per_day < 0) return "Холодильник — целое число тенге в сутки, 0 — бесплатно";
   if (s.prepayment_min_pct > s.prepayment_max_pct || s.prepayment_max_pct > 100) return "Предоплата: от ≤ до ≤ 100";
@@ -88,15 +88,33 @@ export async function saveGrid(seasonId: string, rows: GridRule[]): Promise<Res>
   return ok;
 }
 
-export type ProductFields = { name: string; tulipType: TulipType; color: string; varieties: string; isActive: boolean; sortOrder: number };
+// The site's colors (site/content/colors.ts): the site and the bot show a product only in one of them
+export const COLORS = { red: "красный", white: "белый", pink: "розовый", yellow: "жёлтый", purple: "фиолетовый", orange: "оранжевый" } as const;
+export type Color = keyof typeof COLORS;
 
-export async function saveProduct(id: string | null, f: ProductFields): Promise<Res> {
-  if (!f.name) return no("Название цвета");
+export type ProductFields = { name: string; tulipType: TulipType; color: Color; varieties: string; isActive: boolean; sortOrder: number };
+
+export async function saveProduct(id: string | null, f: ProductFields): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  if (!f.name) return no("Название товара");
   if (!Number.isInteger(f.sortOrder)) return no("Порядок — целое число");
-  const values = { ...f, color: f.color || null, varieties: f.varieties || null };
-  if (id) await db.update(products).set(values).where(eq(products.id, id));
-  else await db.insert(products).values({ ...values, line: "tulpan", unit: "stem", packSize: DEFAULT_SETTINGS.pack_size });
-  return ok;
+  // the site and the bot find a product by color × type: a second one on sale with the same pair would never show
+  if (f.isActive) {
+    const [twin] = await db
+      .select({ name: products.name })
+      .from(products)
+      .where(and(eq(products.isActive, true), eq(products.color, f.color), eq(products.tulipType, f.tulipType), id ? ne(products.id, id) : undefined));
+    if (twin) return no(`«${twin.name}» уже продаётся в этом цвете и типе — впишите сорт в него`);
+  }
+  const values = { ...f, varieties: f.varieties || null };
+  if (id) {
+    await db.update(products).set(values).where(eq(products.id, id));
+    return { ok: true, id };
+  }
+  const [p] = await db
+    .insert(products)
+    .values({ ...values, line: "tulpan", unit: "stem", packSize: DEFAULT_SETTINGS.pack_size })
+    .returning({ id: products.id });
+  return { ok: true, id: p.id };
 }
 
 // The plan is typed while the season is being planned or for a color without a plan; later changes are adjustments
@@ -118,6 +136,21 @@ export async function setPlans(seasonId: string, packs: Map<string, number>): Pr
       .onConflictDoUpdate({ target: [stockPlans.seasonId, stockPlans.productId], set: { plannedStems } });
   }
   return ok;
+}
+
+// «Всего пачек» on the «Товары» page: no plan yet → the plan; otherwise the difference to plan + adjustments is one adjustment with its reason
+export async function setStockTotal(seasonId: string, productId: string, packs: number, reason: string, userId: string): Promise<Res> {
+  if (!Number.isInteger(packs) || packs < 0) return no("Количество — целое число пачек");
+  const [p] = await db.select().from(products).where(eq(products.id, productId));
+  if (!p) return no("Товар не найден");
+  const [plan] = await db.select().from(stockPlans).where(and(eq(stockPlans.seasonId, seasonId), eq(stockPlans.productId, productId)));
+  if (!plan) return setPlans(seasonId, new Map([[productId, packs]]));
+  const [{ adjusted }] = await db
+    .select({ adjusted: sql<number>`coalesce(sum(${stockAdjustments.deltaStems}), 0)::int` })
+    .from(stockAdjustments)
+    .where(and(eq(stockAdjustments.seasonId, seasonId), eq(stockAdjustments.productId, productId)));
+  const delta = packs * p.packSize - (plan.plannedStems + adjusted);
+  return delta ? addAdjustment(seasonId, productId, delta, reason, userId) : ok;
 }
 
 export async function addAdjustment(seasonId: string, productId: string, deltaStems: number, reason: string, userId: string): Promise<Res> {

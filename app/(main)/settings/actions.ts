@@ -39,7 +39,6 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
     min_order_stems: int(fd, "min_order_stems"),
     min_order_scope: oneOf(fd, "min_order_scope", ["total", "per_color"], "total"),
     hold_days: int(fd, "hold_days"),
-    check_threshold_amount: int(fd, "check_threshold_amount"),
     prepayment_min_pct: int(fd, "prepayment_min_pct"),
     prepayment_max_pct: int(fd, "prepayment_max_pct"),
     prepayment_step: int(fd, "prepayment_step"),
@@ -89,16 +88,20 @@ export async function addAdjustmentAction(_: FormState, fd: FormData): Promise<F
 }
 
 export async function saveProductAction(_: FormState, fd: FormData): Promise<FormState> {
-  await requireOwner();
+  const user = await requireOwner();
   const r = await svc.saveProduct(uuid(fd, "id"), {
     name: str(fd, "name", 100),
     tulipType: oneOf(fd, "tulipType", TYPES, "classic"),
-    color: str(fd, "color", 50),
+    color: oneOf(fd, "color", Object.keys(svc.COLORS) as svc.Color[], "red"),
     varieties: str(fd, "varieties", 500),
     isActive: fd.get("isActive") === "on",
     sortOrder: int(fd, "sortOrder"),
   });
-  return answer(r, "Сохранено");
+  if (!r.ok) return { error: r.error };
+  // the product's stock in the same form: a new one gets its plan, an existing one an adjustment by the difference
+  const seasonId = uuid(fd, "seasonId");
+  if (!seasonId || str(fd, "packs") === "") return done("Сохранено");
+  return answer(await svc.setStockTotal(seasonId, r.id, int(fd, "packs"), str(fd, "reason", 300), user.id), "Сохранено");
 }
 
 // «Настройки → WhatsApp»: subscribe Wazzup's webhooks to this CRM and read the channel state

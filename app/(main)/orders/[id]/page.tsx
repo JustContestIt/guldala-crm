@@ -194,7 +194,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           <ActionForm action={statusAction}>
             <input type="hidden" name="id" value={o.id} />
             <input type="hidden" name="op" value="ready" />
-            <Submit className="w-full">Готов к выдаче</Submit>
+            <Submit className="w-full">Собран — на выдачу</Submit>
           </ActionForm>
         )}
 
@@ -208,6 +208,10 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             </ActionForm>
           ) : (
             <ActionForm action={paymentAction} className="grid grid-cols-2 gap-2">
+              {/* Kaspi isn't wired in yet (stage G): the invoice is sent by hand from the Kaspi app */}
+              <p className="col-span-2 text-sm text-muted">
+                Выставьте счёт Kaspi на {tenge(m.prepaymentDue)} на номер {prettyPhone(client.phone)} в приложении Kaspi. Деньги пришли — отметьте:
+              </p>
               <input type="hidden" name="id" value={o.id} />
               <input type="hidden" name="amount" value={m.prepaymentDue} />
               <Submit name="method" value="kaspi_invoice" confirm={`Предоплата ${tenge(m.prepaymentDue)} по Kaspi получена?`}>
@@ -266,16 +270,9 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                   <option value="cash">Наличные</option>
                 </select>
               </Field>
-              <Field label="Номер счёта Kaspi">
-                <input name="invoiceRef" className="input" />
-              </Field>
-              <Field label="Заметка">
+              <Field label="Заметка" className="col-span-2">
                 <input name="note" className="input" />
               </Field>
-              <label className="col-span-2 flex items-center gap-2 text-sm">
-                <input type="checkbox" name="pending" className="size-5" />
-                Счёт только выставлен, ждём оплату
-              </label>
               <div className="col-span-2">
                 <Submit>Записать</Submit>
               </div>

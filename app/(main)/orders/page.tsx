@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { seasons } from "@/db/schema";
 import { balanceOf, BOARD, dueOf, groupBoard, left, waiting } from "@/lib/board";
 import { prettyPhone, tenge } from "@/lib/format";
-import { STATUS_LABEL } from "@/lib/status";
+import { DROP_LABEL, STATUS_HINT, STATUS_LABEL } from "@/lib/status";
 import { currentSeason } from "@/services/catalog";
 import { orderList, pendingInvoices, type OrderListRow } from "@/services/orders";
 
@@ -18,8 +18,17 @@ const who = (r: { company: string | null; name: string; phone?: string }) => r.c
 const small = "min-h-9 w-full text-xs";
 
 // The one next step of a card, a tap away from the board; anything else is on the order card
-function NextStep({ r, invoice }: { r: OrderListRow; invoice?: { id: string; amount: number } }) {
+function NextStep({ r, invoice, ready }: { r: OrderListRow; invoice?: { id: string; amount: number }; ready: boolean }) {
   const bal = balanceOf(r);
+  if (r.status === "prepaid" && ready)
+    // packed and waiting for the client; a client who comes earlier is issued from the order card or by a drag to «Выдан»
+    return (
+      <ActionForm action={statusAction} className="">
+        <input type="hidden" name="id" value={r.id} />
+        <input type="hidden" name="op" value="ready" />
+        <Submit className={`btn-primary ${small}`}>Собран — на выдачу</Submit>
+      </ActionForm>
+    );
   if (r.status === "new" || r.status === "expired")
     return (
       <ActionForm action={statusAction} className="">
@@ -111,8 +120,12 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         )}
       </form>
 
+      <p className="text-xs text-muted">
+        Заказ идёт слева направо: кнопка на карточке делает следующий шаг. Карточку можно и перетащить в другую колонку — на телефоне подержите палец.
+      </p>
+
       {/* Spec §5.4: columns side by side from lg; on the phone one row per status with a swipeable strip of cards.
-          Cards drag to another status (hold on the phone); lit rows are where this card can go */}
+          Cards drag to another status (hold on the phone); lit rows are where this card can go and say what the drop does */}
       <DragBoard ready={ready}>
       <div data-wide className="space-y-3 lg:flex lg:items-start lg:gap-3 lg:space-y-0 lg:overflow-x-auto lg:pb-2 no-scrollbar">
         {cols.map((c) => (
@@ -120,13 +133,17 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
             key={c.status}
             aria-label={STATUS_LABEL[c.status]}
             data-col={c.status}
-            className="-mx-1 flex gap-2 rounded-2xl p-1 transition-colors data-[drop]:bg-mint/60 data-[drop]:outline-2 data-[drop]:outline-dashed data-[drop]:outline-accent/50 data-[over]:bg-mint data-[over]:outline-accent lg:mx-0 lg:min-w-60 lg:flex-1 lg:flex-col lg:bg-line/40 lg:p-2"
+            className="group -mx-1 flex flex-col gap-1.5 rounded-2xl p-1 transition-colors data-[drop]:bg-mint/60 data-[drop]:outline-2 data-[drop]:outline-dashed data-[drop]:outline-accent/50 data-[over]:bg-mint data-[over]:outline-accent lg:mx-0 lg:min-w-60 lg:flex-1 lg:bg-line/40 lg:p-2"
           >
-            <header className="w-24 shrink-0 pt-1 lg:w-auto lg:px-1">
-              <h2 className="text-sm leading-tight">{STATUS_LABEL[c.status]}</h2>
-              <p className="mt-0.5 text-xs text-muted tabular-nums">
-                {c.rows.length} · {c.rows.reduce((a, r) => a + r.packs, 0)} пач.
-              </p>
+            <header className="px-1">
+              <h2 className="text-sm leading-tight">
+                {STATUS_LABEL[c.status]}{" "}
+                <span className="text-xs font-normal text-muted tabular-nums">
+                  · {c.rows.length} · {c.rows.reduce((a, r) => a + r.packs, 0)} пач.
+                </span>
+              </h2>
+              <p className="mt-0.5 text-xs text-muted group-data-[drop]:hidden">{STATUS_HINT[c.status]}</p>
+              {DROP_LABEL[c.status] && <p className="mt-0.5 hidden text-xs font-semibold text-accent-dark group-data-[drop]:block">↓ {DROP_LABEL[c.status]}</p>}
             </header>
             <ul className="no-scrollbar flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
               {c.rows.map((r) => (
@@ -152,7 +169,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                       {waiting(r) && <p className="text-muted">{waiting(r)}</p>}
                       {r.status === "confirmed" && r.holdUntil && <p className="font-semibold text-up">бронь: {left(r.holdUntil)}</p>}
                     </Link>
-                    <NextStep r={r} invoice={invoiceOf.get(r.id)} />
+                    <NextStep r={r} invoice={invoiceOf.get(r.id)} ready={ready} />
                   </div>
                 </li>
               ))}

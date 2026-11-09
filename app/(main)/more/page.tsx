@@ -14,13 +14,13 @@ export default async function MorePage() {
         {user.role === "owner" && (
           <>
             <li>
-              <Link href="/settings" className="block px-4 py-3 font-medium">
-                Сезоны, сетка цен, остатки
+              <Link href="/settings/products" className="block px-4 py-3 font-medium">
+                Товары и остатки
               </Link>
             </li>
             <li>
-              <Link href="/settings/products" className="block px-4 py-3 font-medium">
-                Цвета
+              <Link href="/settings" className="block px-4 py-3 font-medium">
+                Сезоны, сетка цен
               </Link>
             </li>
             <li>

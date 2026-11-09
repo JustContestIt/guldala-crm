@@ -146,7 +146,6 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
         ...q.shortages.map(wordsOnly),
         ...(q.priced.missing.length ? ["Нет цены на сегодня — передай вопрос Татьяне"] : []),
       ],
-      ...(q.overThreshold && { note: "Крупный заказ: Татьяна проверит наличие и подтвердит бронь сама" }),
     };
   },
 
@@ -245,7 +244,7 @@ function instructions(season: Season) {
     `- Пачка — ${s.pack_size} шт. Минимальный заказ — ${s.min_order_stems} шт ${s.min_order_scope === "total" ? "в сумме по заказу" : "каждого цвета"}.`,
     `- Предоплата — от ${s.prepayment_min_pct} до ${s.prepayment_max_pct} %, шаг ${s.prepayment_step} %.`,
     `- Без предоплаты бронь держится ${s.hold_days} дн. Цена фиксируется ${s.price_lock_on === "prepaid" ? "при предоплате" : "при подтверждении брони"}.`,
-    `- Заказ от ${tenge(s.check_threshold_amount)} Татьяна проверяет и подтверждает сама.`,
+    `- Каждый заказ Татьяна проверяет и подтверждает сама; до подтверждения товар не отложен.`,
     `- Пик — ${season.peakDate}. Выдача с ${season.pickupFrom} по ${season.pickupTo}, ${s.pickup_hours}${s.peak_hours_from ? `; с ${s.peak_hours_from} — ${s.pickup_hours_peak}` : ""}.`,
     `- Холодильник до вывоза — ${tenge(s.storage_fee_per_day)} в сутки за заказ, считается от дня заказа до дня вывоза и входит в сумму заказа.`,
   ];

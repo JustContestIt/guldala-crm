@@ -111,9 +111,6 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
           <Field label="На сайте «мало» ниже, % плана">
             <input name="stock_few_below_pct" inputMode="numeric" className="input" defaultValue={s.stock_few_below_pct ?? 30} />
           </Field>
-          <Field label="Проверка от, ₸">
-            <input name="check_threshold_amount" inputMode="numeric" className="input" defaultValue={s.check_threshold_amount} />
-          </Field>
           <Field label="Холодильник, ₸ в сутки">
             <input name="storage_fee_per_day" inputMode="numeric" className="input" defaultValue={s.storage_fee_per_day} />
           </Field>
@@ -140,7 +137,7 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
           </Field>
           <label className="col-span-2 flex items-center gap-2 text-sm">
             <input type="checkbox" name="ready_status_enabled" defaultChecked={s.ready_status_enabled} className="size-5" />
-            Статус «Готов к выдаче»
+            Колонка «На выдачу»: заказ собран, ждёт клиента
           </label>
           <label className="col-span-2 flex items-center gap-2 text-sm">
             <input type="checkbox" name="issue_on_full_payment_allowed" defaultChecked={s.issue_on_full_payment_allowed} className="size-5" />

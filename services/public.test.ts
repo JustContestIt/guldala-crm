@@ -68,18 +68,18 @@ describe.skipIf(!enabled)("public API", async () => {
     ]);
   });
 
-  it("creates a confirmed order below the threshold, a new one above, and sends the booking", async () => {
+  it("saves every site order as new, small or big, and sends the booking", async () => {
     const res = await post(order([{ productId: pink, packs: 4 }]));
     expect(res.status).toBe(200);
     const r = await res.json();
     expect(r).toMatchObject({ orderNumber: "T-2027-0001", total: 24_000, prepaymentAmount: 9_600, pricesLockedAt: null });
-    expect(r.holdUntil).not.toBeNull();
+    expect(r.holdUntil).toBeNull(); // no hold until Tatiana confirms
     const [o] = await db.select().from(s.orders);
-    expect(o).toMatchObject({ status: "confirmed", channel: "site", createdBy: "client", publicToken: r.token });
+    expect(o).toMatchObject({ status: "new", channel: "site", createdBy: "client", publicToken: r.token });
     const [msg] = await db.select().from(s.messages);
     expect(msg).toMatchObject({ templateKey: "booking", status: "sent" });
 
-    const big = await (await post(order([{ productId: pink, packs: 20 }], "+77011111112"), "10.0.0.2")).json(); // 120 000 ₸ ≥ 100 000
+    const big = await (await post(order([{ productId: pink, packs: 20 }], "+77011111112"), "10.0.0.2")).json(); // 120 000 ₸
     const [n] = await db.select().from(s.orders).where(eq(s.orders.number, big.orderNumber));
     expect(n.status).toBe("new");
     expect(n.holdUntil).toBeNull();
@@ -117,7 +117,7 @@ describe.skipIf(!enabled)("public API", async () => {
     const o = (await pub.orderByToken(token))!;
     expect(o).toMatchObject({
       orderNumber: "T-2027-0001",
-      status: "confirmed",
+      status: "new",
       prepaymentPct: 40,
       total: 24_000,
       paid: 0,
@@ -131,7 +131,9 @@ describe.skipIf(!enabled)("public API", async () => {
   });
 
   it("season/current: prices at 100 %, the grid at the site's four points, stock minus reserves", async () => {
-    await post(order([{ productId: red, packs: 4 }]), "10.0.0.5"); // 30 stems of red left
+    await post(order([{ productId: red, packs: 4 }]), "10.0.0.5");
+    expect((await pub.seasonCurrent())!.stock.find((x) => x.productId === red)).toMatchObject({ maxPacks: 5 }); // a new order holds nothing
+    await db.update(s.orders).set({ status: "confirmed" }); // Tatiana confirmed it: 30 stems of red left
     const c = (await pub.seasonCurrent())!;
     expect(c.season).toMatchObject({ saleOpen: true, pickupFrom: "2027-03-01", pickupTo: "2027-03-08", peakHoursFrom: "2027-03-05" });
     expect(c.prices.classic).toEqual({ today: 180, next: { from: "2027-02-01", price: 250 } });

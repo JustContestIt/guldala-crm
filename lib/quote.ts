@@ -41,7 +41,6 @@ export function computeQuote(a: {
       withColor.map((r) => ({ productId: r.productId!, name: r.name, qtyStems: r.qtyPacks * r.packSize, packSize: r.packSize })),
       new Map(a.products.map((p) => [p.id, p.freeStems])),
     ),
-    overThreshold: priced.subtotal >= a.settings.check_threshold_amount,
     allColored: rows.length > 0 && withColor.length === rows.length,
   };
 }

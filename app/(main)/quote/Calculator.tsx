@@ -20,7 +20,6 @@ export function Calculator(p: { products: ProductOpt[]; rules: Rule[]; settings:
     ...q.problems,
     ...q.priced.missing.map((t) => `Нет цены на сегодня для ${t === "classic" ? "классики" : "махровых"} — проверьте сетку`),
     ...q.shortages,
-    ...(q.overThreshold ? [`От ${tenge(p.settings.check_threshold_amount)} заказ потребует проверки`] : []),
   ];
   const text = quoteText({
     day: p.today,

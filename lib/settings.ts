@@ -4,7 +4,6 @@ export type SeasonSettings = {
   min_order_stems: number;
   min_order_scope: "total" | "per_color"; // open question 1
   hold_days: number;
-  check_threshold_amount: number; // ₸, open question 4
   prepayment_min_pct: number;
   prepayment_max_pct: number;
   prepayment_step: number;
@@ -24,14 +23,13 @@ export const DEFAULT_SETTINGS: SeasonSettings = {
   min_order_stems: 120,
   min_order_scope: "total",
   hold_days: 3,
-  check_threshold_amount: 100_000,
   prepayment_min_pct: 40,
   prepayment_max_pct: 100,
   prepayment_step: 10,
   pickup_hours: "08:00–18:00",
   pickup_hours_peak: "08:00–23:00",
   peak_hours_from: "",
-  ready_status_enabled: false,
+  ready_status_enabled: true, // the «На выдачу» column (Nikita 09.11.2026)
   issue_on_full_payment_allowed: true,
   price_lock_on: "prepaid",
   client_notifications: "manual",
