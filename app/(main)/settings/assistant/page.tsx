@@ -6,8 +6,8 @@ import { BackLink, Field } from "@/components/ui";
 import { EFFORTS, listModels, PRICES, type Effort } from "@/integrations/openai";
 import { requireOwner } from "@/lib/auth";
 import { almatyDay, dm, dmhm, prettyPhone } from "@/lib/format";
-import { assistantSettings, promptFile, RUN_FILTERS, runLog, type RunFilter } from "@/services/assistant";
-import { assistantAction } from "../actions";
+import { assistantSettings, promptText, RUN_FILTERS, runLog, type PromptPart, type RunFilter } from "@/services/assistant";
+import { assistantAction, promptAction } from "../actions";
 
 export const metadata: Metadata = { title: "Ассистент" };
 
@@ -29,7 +29,7 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
   await requireOwner();
   const { runs: filter } = await searchParams;
   const only = RUN_FILTERS.find((f) => f === filter);
-  const [a, runs] = await Promise.all([assistantSettings(), runLog({ only })]);
+  const [a, runs, restrictions, knowledge] = await Promise.all([assistantSettings(), runLog({ only }), promptText("restrictions"), promptText("knowledge")]);
   const key = !!process.env.OPENAI_API_KEY;
   let models: { id: string; shutdown: string | null }[] = [];
   let listError = "";
@@ -123,14 +123,23 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
         </ul>
         {!runs.length && <p className="text-sm text-muted">Запусков нет</p>}
       </section>
-      <details className="card">
-        <summary className="font-semibold">Правила — assistant/restrictions.md</summary>
-        <pre className="mt-3 text-sm whitespace-pre-wrap">{promptFile("restrictions.md")}</pre>
-      </details>
-      <details className="card">
-        <summary className="font-semibold">База знаний — assistant/knowledge.md</summary>
-        <pre className="mt-3 text-sm whitespace-pre-wrap">{promptFile("knowledge.md")}</pre>
-      </details>
+      {/* review 09.11.2026, К16: edited here, the bot reads them on its next answer */}
+      {(
+        [
+          ["restrictions", "Правила бота", restrictions],
+          ["knowledge", "База знаний", knowledge],
+        ] as [PromptPart, string, string][]
+      ).map(([part, title, text]) => (
+        <details key={part} className="card">
+          <summary className="font-semibold">{title}</summary>
+          <ActionForm action={promptAction} className="mt-3 space-y-3">
+            <input type="hidden" name="part" value={part} />
+            <textarea name="text" defaultValue={text} rows={18} className="input min-h-80 font-mono text-sm" aria-label={title} />
+            <p className="text-xs text-muted">Бот отвечает по сохранённому тексту со следующего сообщения клиента. Числа сезона (пачка, предоплата, даты) он берёт из настроек сам.</p>
+            <Submit>Сохранить</Submit>
+          </ActionForm>
+        </details>
+      ))}
     </div>
   );
 }

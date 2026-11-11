@@ -23,7 +23,7 @@ function NextStep({ r, invoice, ready }: { r: OrderListRow; invoice?: { id: stri
   if (r.status === "prepaid" && ready)
     // packed and waiting for the client; a client who comes earlier is issued from the order card or by a drag to «Выдан»
     return (
-      <ActionForm action={statusAction} className="">
+      <ActionForm toast action={statusAction} className="">
         <input type="hidden" name="id" value={r.id} />
         <input type="hidden" name="op" value="ready" />
         <Submit className={`btn-primary ${small}`}>Собран — на выдачу</Submit>
@@ -31,7 +31,7 @@ function NextStep({ r, invoice, ready }: { r: OrderListRow; invoice?: { id: stri
     );
   if (r.status === "new" || r.status === "expired")
     return (
-      <ActionForm action={statusAction} className="">
+      <ActionForm toast action={statusAction} className="">
         <input type="hidden" name="id" value={r.id} />
         <input type="hidden" name="op" value={r.status === "new" ? "confirm" : "resume"} />
         <Submit className={`btn-primary ${small}`}>{r.status === "new" ? "Подтвердить" : "Возобновить"}</Submit>
@@ -40,14 +40,14 @@ function NextStep({ r, invoice, ready }: { r: OrderListRow; invoice?: { id: stri
   if (r.status === "confirmed")
     // an invoice already sent is the payment to close — a second record would pay twice
     return invoice ? (
-      <ActionForm action={invoiceAction} className="">
+      <ActionForm toast action={invoiceAction} className="">
         <input type="hidden" name="paymentId" value={invoice.id} />
         <Submit className={`btn-primary ${small}`} confirm={`${r.number}: счёт Kaspi ${tenge(invoice.amount)} оплачен?`}>
           Счёт оплачен
         </Submit>
       </ActionForm>
     ) : (
-      <ActionForm action={paymentAction} className="">
+      <ActionForm toast action={paymentAction} className="">
         <input type="hidden" name="id" value={r.id} />
         <input type="hidden" name="amount" value={dueOf(r)} />
         <input type="hidden" name="method" value="kaspi_invoice" />
@@ -62,7 +62,7 @@ function NextStep({ r, invoice, ready }: { r: OrderListRow; invoice?: { id: stri
         Доплата {tenge(bal)} · выдать
       </Link>
     ) : (
-      <ActionForm action={issueAction} className="">
+      <ActionForm toast action={issueAction} className="">
         <input type="hidden" name="id" value={r.id} />
         <Submit className={`btn-primary ${small}`} confirm={`Выдать ${r.number} целиком?`}>
           Выдать

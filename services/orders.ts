@@ -377,9 +377,15 @@ export const recordPayment = (orderId: string, p: PaymentInput, actor: Actor) =>
     if (p.paid) await syncPrepaid(tx, o, actor);
   });
 
-async function orderOfPayment(paymentId: string) {
+export async function orderOfPayment(paymentId: string) {
   const [p] = await db.select({ orderId: payments.orderId }).from(payments).where(eq(payments.id, paymentId));
   return p?.orderId;
+}
+
+// The status now: the toast after a payment says whether the card moved (review 09.11.2026, К22)
+export async function orderStatus(orderId: string) {
+  const [o] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId));
+  return o?.status;
 }
 
 // The awaited Kaspi invoice got paid. Money is a fact, so it's accepted in any status but cancelled.

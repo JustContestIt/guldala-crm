@@ -8,6 +8,7 @@ import { day, hm, int, oneOf, str, uuid, type FormState } from "@/lib/form";
 import { messaging } from "@/integrations/messaging";
 import { CLIENT_TYPES, updateClient, type ClientType } from "@/services/clients";
 import { deleteDraft, sendDraft, sendMessage, setAssistantMuted } from "@/services/messages";
+import { STATUS_LABEL } from "@/lib/status";
 import * as o from "@/services/orders";
 import { createPrefill } from "@/services/public";
 
@@ -15,6 +16,9 @@ const actorOf = (u: User): o.Actor => ({ id: u.id, role: u.role });
 const reply = (r: { ok: boolean; error?: string }, ok: string): FormState => (r.ok ? (refresh(), { ok }) : { error: r.error });
 const METHODS = ["kaspi_invoice", "cash"] as const;
 const noOrder: FormState = { error: "Заказ не найден" };
+// The texts say where the card went: they pop up over the board and «Выдача» after the card leaves (review 09.11.2026, К22)
+const CLOSED = "он в «Показать истёкшие и отменённые» на доске";
+const movedIf = (before?: string, after?: keyof typeof STATUS_LABEL) => (after && after !== before ? `, заказ перемещён в «${STATUS_LABEL[after]}»` : "");
 
 // "id:packs,id:packs" from the lines editor
 const parseLines = (s: string) =>
@@ -57,13 +61,16 @@ export async function statusAction(_: FormState, fd: FormData): Promise<FormStat
   if (!id) return noOrder;
   const op = oneOf(fd, "op", ["confirm", "resume", "ready"], "confirm");
   const fn = { confirm: o.confirmOrder, resume: o.resumeOrder, ready: o.markReady }[op];
-  return reply(await fn(id, actor), { confirm: "Бронь подтверждена", resume: "Бронь возобновлена", ready: "Отмечен готовым к выдаче" }[op]);
+  return reply(
+    await fn(id, actor),
+    { confirm: "Заказ подтверждён и перемещён в «Бронь»", resume: "Бронь возобновлена, заказ перемещён в «Бронь»", ready: "Заказ собран и перемещён в «На выдачу»" }[op],
+  );
 }
 
 export async function cancelAction(_: FormState, fd: FormData): Promise<FormState> {
   const actor = actorOf(await requireUser());
   const id = uuid(fd, "id");
-  return id ? reply(await o.cancelOrder(id, str(fd, "reason", 300), actor), "Заказ отменён") : noOrder;
+  return id ? reply(await o.cancelOrder(id, str(fd, "reason", 300), actor), `Заказ отменён: ${CLOSED}`) : noOrder;
 }
 
 // datetime-local comes without a zone; Kazakhstan is UTC+5 all year
@@ -81,19 +88,24 @@ export async function paymentAction(_: FormState, fd: FormData): Promise<FormSta
   const id = uuid(fd, "id");
   if (!id) return noOrder;
   const paid = fd.get("pending") !== "on";
+  const before = await o.orderStatus(id);
   const r = await o.recordPayment(
     id,
     { amount: int(fd, "amount"), method: oneOf(fd, "method", METHODS, "kaspi_invoice"), paid, invoiceRef: str(fd, "invoiceRef", 100), note: str(fd, "note", 300) },
     actor,
   );
-  return reply(r, paid ? "Оплата записана" : "Счёт записан, ждём оплату");
+  return reply(r, paid ? `Оплата записана${r.ok ? movedIf(before, await o.orderStatus(id)) : ""}` : "Счёт записан, ждём оплату");
 }
 
 export async function invoiceAction(_: FormState, fd: FormData): Promise<FormState> {
   const actor = actorOf(await requireUser());
   const id = uuid(fd, "paymentId");
   if (!id) return { error: "Счёт не найден" };
-  return fd.get("op") === "cancel" ? reply(await o.cancelInvoice(id, actor), "Счёт отменён") : reply(await o.markInvoicePaid(id, actor), "Счёт оплачен");
+  if (fd.get("op") === "cancel") return reply(await o.cancelInvoice(id, actor), "Счёт отменён");
+  const orderId = await o.orderOfPayment(id);
+  const before = orderId && (await o.orderStatus(orderId));
+  const r = await o.markInvoicePaid(id, actor);
+  return reply(r, `Счёт оплачен${r.ok && orderId ? movedIf(before || undefined, await o.orderStatus(orderId)) : ""}`);
 }
 
 // Full issue, or partial with packs:<itemId> fields (blank = 0) from the «Выдача» screen
@@ -105,7 +117,7 @@ export async function issueAction(_: FormState, fd: FormData): Promise<FormState
   const packs = fd.get("partial")
     ? Object.fromEntries([...fd.keys()].filter((k) => k.startsWith("packs:")).map((k) => [k.slice(6), str(fd, k) ? int(fd, k) : 0]))
     : undefined;
-  return reply(await o.issueOrder(id, method, actor, packs), packs ? "Выдача записана" : "Заказ выдан");
+  return reply(await o.issueOrder(id, method, actor, packs), packs ? "Выдача записана" : "Заказ выдан и перемещён в «Выдан»");
 }
 
 export async function noShowAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -114,7 +126,7 @@ export async function noShowAction(_: FormState, fd: FormData): Promise<FormStat
   const d = day(fd, "day");
   if (!id || !d) return noOrder;
   // review 09.11.2026, К20: the client didn't come — cancelled, the flowers go back on sale, a paid prepayment stays as compensation
-  return reply(await o.cancelOrder(id, `Не приехал за заказом ${dm(d)}`, actor), "Заказ отменён, цветы вернулись на склад");
+  return reply(await o.cancelOrder(id, `Не приехал за заказом ${dm(d)}`, actor), `Заказ отменён, цветы вернулись на склад: ${CLOSED}`);
 }
 
 export async function discountAction(_: FormState, fd: FormData): Promise<FormState> {

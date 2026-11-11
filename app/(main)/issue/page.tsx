@@ -94,7 +94,7 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                 </p>
               )}
               <div className="flex flex-wrap items-start gap-2">
-                <ActionForm action={issueAction} className="flex flex-wrap items-center gap-2">
+                <ActionForm toast action={issueAction} className="flex flex-wrap items-center gap-2">
                   <input type="hidden" name="id" value={r.id} />
                   {bal > 0 ? (
                     <>
@@ -109,7 +109,7 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                     <Submit confirm={`Выдать ${r.number} целиком?`}>Выдать заказ</Submit>
                   )}
                 </ActionForm>
-                <ActionForm action={noShowAction}>
+                <ActionForm toast action={noShowAction}>
                   <input type="hidden" name="id" value={r.id} />
                   <input type="hidden" name="day" value={day} />
                   <Submit
@@ -123,7 +123,7 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
               {r.status !== "confirmed" && (
                 <details>
                   <summary className="btn">Частичная отгрузка</summary>
-                  <ActionForm action={issueAction} className="mt-2 space-y-2">
+                  <ActionForm toast action={issueAction} className="mt-2 space-y-2">
                     <input type="hidden" name="id" value={r.id} />
                     <input type="hidden" name="partial" value="1" />
                     {left.map((i) => (

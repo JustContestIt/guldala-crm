@@ -6,6 +6,7 @@ import { cancelAction, invoiceAction, issueAction, paymentAction, statusAction }
 import type { FormState } from "@/lib/form";
 import { tenge } from "@/lib/format";
 import { canMove } from "@/lib/status";
+import { toast } from "./Toaster";
 import type { Status } from "@/lib/calc";
 
 // Spec §5.4: drag a card to another status — the phone first. Touch: hold ~0.3 s, then drag (a quick swipe still
@@ -99,6 +100,7 @@ export function DragBoard({ ready, children }: { ready: boolean; children: React
       for (const [k, v] of Object.entries(fields)) fd.set(k, v);
       const r = await action(null, fd);
       if (r?.error) alert(r.error); // nothing moved: the card stays where it was
+      else if (r?.ok) toast(r.ok);
       router.refresh();
     };
 

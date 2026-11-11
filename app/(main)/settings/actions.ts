@@ -8,7 +8,7 @@ import { fromForm, TYPES } from "@/lib/grid";
 import type { SeasonSettings } from "@/lib/settings";
 import { CHANNEL_STATE } from "@/integrations/messaging";
 import { EFFORTS } from "@/integrations/openai";
-import { MODES, saveAssistantSettings } from "@/services/assistant";
+import { MODES, PROMPT_PARTS, saveAssistantSettings, savePrompt } from "@/services/assistant";
 import { connectChannel } from "@/services/messages";
 import * as svc from "@/services/settings";
 
@@ -105,6 +105,13 @@ export async function connectWhatsappAction(): Promise<FormState> {
   await requireOwner();
   const r = await connectChannel();
   return r.ok ? done(`Вебхуки подписаны. Канал: ${CHANNEL_STATE[r.state] ?? r.state}`) : (refresh(), { error: r.error });
+}
+
+// «Настройки → Ассистент»: the bot's rules or knowledge, used from the next client message on
+export async function promptAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireOwner();
+  const r = await savePrompt(oneOf(fd, "part", PROMPT_PARTS, "knowledge"), str(fd, "text", 100_000));
+  return r.ok ? done("Сохранено: бот отвечает по новому тексту со следующего сообщения") : { error: r.error };
 }
 
 // «Настройки → Ассистент»: saved only after the chosen model answered a short question

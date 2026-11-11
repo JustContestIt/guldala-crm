@@ -231,11 +231,26 @@ async function tool(name: string, args: string, c: Ctx): Promise<{ result: unkno
   }
 }
 
-// ——— the prompt: rules and knowledge from assistant/*.md, then the season's numbers; the same on every call ———
+// ——— the prompt: rules and knowledge, then the season's numbers; the same on every call ———
 
-export const promptFile = (f: "restrictions.md" | "knowledge.md") => readFileSync(path.join(process.cwd(), "assistant", f), "utf8");
+// Rules and knowledge are edited on «Настройки → Ассистент» and kept in app_state "assistant_prompt" (review 09.11.2026, К16):
+// the next client message already gets the new text. Until a part is first saved there, it is assistant/<part>.md.
+export const PROMPT_PARTS = ["restrictions", "knowledge"] as const;
+export type PromptPart = (typeof PROMPT_PARTS)[number];
 
-function instructions(season: Season) {
+export async function promptText(part: PromptPart) {
+  const v = (await readState("assistant_prompt"))[part];
+  return typeof v === "string" ? v : readFileSync(path.join(process.cwd(), "assistant", `${part}.md`), "utf8");
+}
+
+export async function savePrompt(part: PromptPart, text: string) {
+  const t = text.replace(/\r\n/g, "\n").trim();
+  if (!t) return { ok: false as const, error: "Пустой текст бот не примет — напишите правила" };
+  await saveState("assistant_prompt", { [part]: t });
+  return { ok: true as const };
+}
+
+async function instructions(season: Season) {
   const s = season.settings;
   const facts = [
     `# Условия сезона «${season.name}» (настройки CRM)`,
@@ -245,7 +260,7 @@ function instructions(season: Season) {
     `- Каждый заказ Татьяна проверяет и подтверждает сама; до подтверждения товар не отложен.`,
     `- Пик — ${season.peakDate}. Выдача с ${season.pickupFrom} по ${season.pickupTo}, ${s.pickup_hours}${s.peak_hours_from ? `; с ${s.peak_hours_from} — ${s.pickup_hours_peak}` : ""}.`,
   ];
-  return [promptFile("restrictions.md"), promptFile("knowledge.md"), facts.join("\n")].join("\n\n");
+  return [await promptText("restrictions"), await promptText("knowledge"), facts.join("\n")].join("\n\n");
 }
 
 // What changes from chat to chat goes first in the input, after the cached instructions
@@ -325,7 +340,7 @@ export async function replyTo(m: Inbound, deps: { model?: Model; provider?: Mess
   if (!season || mode === "off" || !process.env.OPENAI_API_KEY || !chatAllowed(m.chatId) || !ANSWERED.includes(m.type)) return;
   await new Promise((r) => setTimeout(r, settleMs));
   const started = Date.now();
-  const prompt = instructions(season);
+  const prompt = await instructions(season);
   const steps: RunStep[] = [];
   const rules = createHash("sha256").update(prompt).digest("hex").slice(0, 8);
   const run: Run = { conversationId: m.conversationId, messageId: m.id, mode, model: a.model, effort: a.effort, rules, outcome: "silent", steps, ms: 0 };

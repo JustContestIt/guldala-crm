@@ -178,6 +178,20 @@ describe.skipIf(!enabled)("WhatsApp assistant", async () => {
     expect(sent).toEqual([`${BOT_GREETING}\n\nКрасных много.`]);
   });
 
+  it("answers by the rules and knowledge saved in the CRM from the next message on", async () => {
+    const { savePrompt } = await import("./assistant");
+    const before = script("Здравствуйте!");
+    await say("привет", before.model);
+    expect(before.asked[0].instructions).toContain("Не здоровайся"); // the file until the first save
+    expect(await savePrompt("knowledge", "  \r\n ")).toMatchObject({ ok: false });
+    expect(await savePrompt("knowledge", "Теплица открыта и в воскресенье.\r\n")).toEqual({ ok: true });
+    const after = script("Да, открыта.");
+    await say("в воскресенье работаете?", after.model);
+    expect(after.asked[0].instructions).toContain("Теплица открыта и в воскресенье.\n\n# Условия сезона");
+    const [last, first] = await runLog({});
+    expect(last.run.rules).not.toBe(first.run.rules); // the journal shows the rules changed
+  });
+
   it("refuses to book without a pickup date, and books after «да» the way the site does", async () => {
     const noDate = script(
       [{ name: "update_client", args: { name: "Айгуль", company: "Цветы на Абая" } }],

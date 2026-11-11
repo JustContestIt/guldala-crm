@@ -2,6 +2,7 @@
 
 import { createContext, use, useState, useTransition, type ReactNode } from "react";
 import type { FormState } from "@/lib/form";
+import { toast as showToast } from "./Toaster";
 
 const Pending = createContext(false);
 
@@ -11,10 +12,12 @@ export function ActionForm({
   action,
   children,
   className = "space-y-3",
+  toast = false,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   children: ReactNode;
   className?: string;
+  toast?: boolean; // the success text pops up over the page: for forms inside cards that leave the list
 }) {
   const [state, setState] = useState<FormState>(null);
   const [pending, start] = useTransition();
@@ -27,7 +30,8 @@ export function ActionForm({
         const fd = new FormData(form, (e.nativeEvent as SubmitEvent).submitter);
         start(async () => {
           const r = await action(state, fd);
-          setState(r ?? null);
+          if (toast && r?.ok) showToast(r.ok);
+          setState(toast && r?.ok ? null : (r ?? null));
           if (r?.ok) {
             form.reset();
             form.closest("dialog")?.close(); // a Sheet's job is done; the page already shows the change
