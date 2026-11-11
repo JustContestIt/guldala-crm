@@ -3,7 +3,7 @@ import { and, asc, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, orderItems, orders, products, seasons } from "@/db/schema";
 import { toCsv } from "@/lib/csv";
-import { normalizePhone } from "@/lib/format";
+import { normalizeEmail, normalizePhone } from "@/lib/format";
 import type { Season } from "./catalog";
 import { packsSql } from "./orders";
 
@@ -194,10 +194,12 @@ export async function clientCard(id: string) {
   return { client, orders: list };
 }
 
-export async function updateClient(id: string, patch: { name: string; company: string; clientType: ClientType; notes: string }) {
+export async function updateClient(id: string, patch: { name: string; company: string; email: string; clientType: ClientType; notes: string }) {
+  const email = normalizeEmail(patch.email);
+  if (email === undefined) return { ok: false as const, error: "Почта: проверьте адрес, например name@mail.kz" };
   const r = await db
     .update(clients)
-    .set({ ...patch, company: patch.company || null })
+    .set({ ...patch, company: patch.company || null, email })
     .where(eq(clients.id, id))
     .returning({ id: clients.id });
   return r.length ? { ok: true as const } : { ok: false as const, error: "Клиент не найден" };

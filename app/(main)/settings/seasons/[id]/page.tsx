@@ -100,7 +100,7 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
           <Field label="Цена фиксируется">
             <select name="price_lock_on" className="input" defaultValue={s.price_lock_on}>
               <option value="prepaid">при предоплате</option>
-              <option value="confirmed">при подтверждении</option>
+              <option value="confirmed">в момент брони</option>
             </select>
           </Field>
           <Field label="Напоминания клиентам" className="col-span-2">

@@ -1,39 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { canMove } from "./status";
-import { fillBroadcast, orderText, quoteText, type OrderView } from "./templates";
+import { fillBroadcast, orderText, type OrderView } from "./templates";
 
 const lines = [
   { name: "Красный классический", qtyPacks: 4, packSize: 30, unitPrice: 200, lineTotal: 24_000 },
   { name: "Белый махровый", qtyPacks: 2, packSize: 30, unitPrice: 300, lineTotal: 18_000 },
 ];
-
-describe("quoteText", () => {
-  it("renders the spec §13 quote", () => {
-    const t = quoteText({
-      day: "2026-10-21",
-      lines,
-      total: 42_000,
-      pct: 40,
-      prepayment: 16_800,
-      validUntil: "2026-12-31",
-      pickupHours: "08:00–18:00",
-      minStems: 120,
-    });
-    expect(t).toBe(
-      [
-        "Guldala Tulpan, расчёт на 21.10.2026:",
-        "— Красный классический, 4 пач. × 30 шт × 200 ₸ = 24 000 ₸",
-        "— Белый махровый, 2 пач. × 30 шт × 300 ₸ = 18 000 ₸",
-        "Итого: 42 000 ₸ при предоплате 40 % (16 800 ₸).",
-        "Цена действует до 31.12.2026, дальше по сетке дороже.",
-        "Минимальный заказ — 120 шт. Самовывоз с теплицы, с. Бесагаш, ул. Мамыр, 1, 08:00–18:00.",
-      ]
-        .join("\n")
-        .replace(/(\d) (\d)/g, "$1 $2")
-        .replace(/ ₸/g, " ₸"),
-    );
-  });
-});
 
 describe("orderText", () => {
   const o: OrderView = {
@@ -47,6 +19,9 @@ describe("orderText", () => {
     prepayment: 16_800,
     prepaymentDue: 16_800,
     balance: 42_000,
+    paid: 0,
+    invoice: 0,
+    priceDay: "2026-10-21",
     phone: "+77770000001",
     holdUntil: new Date("2026-10-24T13:00:00Z"), // 18:00 in Almaty
     pickupDate: "2027-03-06",
@@ -55,12 +30,19 @@ describe("orderText", () => {
     pickupHours: "08:00–23:00",
   };
 
-  it("booking names the hold deadline and the pickup", () => {
+  it("confirms a hold with its deadline, the price day and the pickup (К31)", () => {
     const t = orderText("booking", o);
-    expect(t).toContain("Заказ T-2027-0042 принят.");
-    expect(t).toContain("бронь держится до 24.10.2026 18:00");
+    expect(t).toContain("Подтверждение заказа T-2027-0042 от Guldala Tulpan, расчёт на 21.10.2026:");
+    expect(t).toMatch(/Итого 42\s000\s₸\.\n/);
+    expect(t).toMatch(/Бронь до 24\.10\.2026 18:00\. Чтобы её закрепить, внесите предоплату 40 % — 16\s800\s₸/);
     expect(t).toContain("Выдача 06.03.2027 14:30, самовывоз");
     expect(t).not.toContain("Холодильник");
+  });
+
+  it("an issued Kaspi invoice is awaited, not asked for again", () => {
+    const t = orderText("booking", { ...o, invoice: 16_800 });
+    expect(t).toMatch(/Счёт Kaspi на 16\s800\s₸ \(предоплата 40 %\) выставлен на номер \+77770000001, ожидается оплата\. Бронь до 24\.10\.2026 18:00\./);
+    expect(t).not.toContain("внесите");
   });
 
   it("booking shows the fridge days and their cost", () => {
@@ -74,10 +56,12 @@ describe("orderText", () => {
     expect(t).toMatch(/Скидка 2\s000/);
   });
 
-  it("booking of a prepaid order doesn't ask for money again", () => {
-    const t = orderText("booking", { ...o, holdUntil: null, prepaymentDue: 0 });
-    expect(t).toContain("Предоплата получена");
+  it("booking of a prepaid order says what was taken and what is left", () => {
+    const t = orderText("booking", { ...o, holdUntil: null, prepaymentDue: 0, paid: 16_800, balance: 25_200 });
+    expect(t).toContain("Подтверждение заказа T-2027-0042");
+    expect(t).toMatch(/Принята предоплата 40 % — 16\s800\s₸\. Остаток оплаты при выдаче — 25\s200\s₸\./);
     expect(t).not.toContain("Kaspi");
+    expect(orderText("booking", { ...o, holdUntil: null, prepaymentDue: 0, paid: 42_000, balance: 0 })).toContain("Заказ оплачен полностью.");
   });
 
   it("pickup reminder says when nothing is left to pay", () => {

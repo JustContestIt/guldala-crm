@@ -4,6 +4,7 @@ import { db, type Db } from "@/db";
 import { clients, orderEvents, orderItems, orders, payments, products, seasons, users } from "@/db/schema";
 import {
   findRule,
+  isValidPct,
   money,
   orderProblems,
   priceLines,
@@ -13,7 +14,7 @@ import {
   type Status,
   type TulipType,
 } from "@/lib/calc";
-import { almatyDay, dm, normalizePhone, prettyPhone, tenge } from "@/lib/format";
+import { almatyDay, dm, normalizeEmail, normalizePhone, prettyPhone, tenge } from "@/lib/format";
 import { hoursFor } from "@/lib/settings";
 import { canMove, PAYABLE, STATUS_LABEL } from "@/lib/status";
 import type { OrderView } from "@/lib/templates";
@@ -96,6 +97,7 @@ const itemRows = (d: Db, orderId: string | string[]) =>
       unitPrice: orderItems.unitPrice,
       lineTotal: orderItems.lineTotal,
       issuedStems: orderItems.issuedStems,
+      createdAt: orderItems.createdAt,
       name: products.name,
       tulipType: products.tulipType,
       color: products.color,
@@ -144,14 +146,22 @@ async function retotal(tx: Db, o: Order) {
   return n;
 }
 
-// Until the price is locked the order costs what the grid says today (spec §9)
+// The grid day a line is priced by: today until the price is locked (spec §9); after the lock the lock day,
+// for whatever prepayment % is chosen (review 09.11.2026, К28); a line added after the lock keeps its own day
+const priceDay = (o: Order, lineCreated: Date) => {
+  if (!o.priceLockedAt) return almatyDay(new Date());
+  const lock = almatyDay(o.priceLockedAt);
+  const own = almatyDay(lineCreated);
+  return own > lock ? own : lock;
+};
+
+// Brings the lines to the grid of their price day; a prepaid order keeps what it was paid at
 async function reprice(tx: Db, o: Order, actor: Actor | null) {
-  if (o.priceLockedAt || !["new", "confirmed", "expired"].includes(o.status)) return o;
-  const day = almatyDay(new Date());
+  if (!["new", "confirmed", "expired"].includes(o.status)) return o;
   const rules = await seasonRules(o.seasonId, tx);
   let changed = false;
   for (const it of await itemRows(tx, o.id)) {
-    const rule = findRule(rules, it.tulipType as TulipType, day, o.prepaymentPct);
+    const rule = findRule(rules, it.tulipType as TulipType, priceDay(o, it.createdAt), o.prepaymentPct);
     if (!rule || rule.pricePerStem === it.unitPrice) continue; // no price today: keep the last one
     changed = true;
     await tx
@@ -161,7 +171,7 @@ async function reprice(tx: Db, o: Order, actor: Actor | null) {
   }
   if (!changed) return o;
   const n = await retotal(tx, o);
-  await log(tx, o.id, actor, "edit", { payload: { repriced: day, totalFrom: o.total, totalTo: n.total } });
+  await log(tx, o.id, actor, "edit", { payload: { repriced: almatyDay(o.priceLockedAt ?? new Date()), totalFrom: o.total, totalTo: n.total } });
   return n;
 }
 
@@ -202,12 +212,19 @@ export type NewOrder = {
   channel: Channel;
   createdBy?: "client" | "operator"; // client = the site form (spec §14): over-stock is refused, not saved as `new`
   prefillToken?: string | null;
+  email?: string;
+  // Skips «Новый» (review 09.11.2026, К28): hold = «Бронь» for hold_days; invoice = «Бронь» awaiting a Kaspi invoice
+  // for the prepayment; paid = the cash prepayment is taken → «Предоплачен» (an operator only)
+  start?: "hold" | "invoice" | "paid";
 };
 
-// Spec §5.3: price by today's grid, always `new` (the operator confirms); the site's form is refused when short of stock
+// Spec §5.3: price by today's grid; `new` (the operator confirms) unless `start` books it at once; short of stock is refused for the site and for a booking
 export function createOrder(input: NewOrder, actor: Actor | null) {
   return run<{ id: string; number: string; status: Status; shortages: string[] }>(async () => {
     const phone = normalizePhone(input.phone) ?? fail("Телефон: казахстанский номер, +7 и 10 цифр");
+    const email = normalizeEmail(input.email ?? "");
+    if (email === undefined) fail("Почта: проверьте адрес, например name@mail.kz");
+    if (input.start === "paid" && !actor) fail("Наличные принимает оператор");
     const season = await currentSeason();
     if (!season || season.status !== "open") fail("Нет открытого сезона — откройте его в настройках");
     const s = season.settings;
@@ -239,18 +256,20 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
         await available(season.id, tx),
       );
       const byClient = input.createdBy === "client";
-      if (short.length && byClient) fail(`Не хватает: ${short.join("; ")}`);
-      // every order lands in «Новый» and is confirmed by hand (Nikita 09.11.2026, instead of the 100 000 ₸ threshold); no stock is held until then
-      const status: Status = "new";
+      if (short.length && (byClient || input.start)) fail(`Не хватает: ${short.join("; ")}`);
+      // an order without `start` lands in «Новый» and is confirmed by hand (Nikita 09.11.2026, instead of the 100 000 ₸ threshold); no stock is held until then
+      const status: Status = input.start ? "confirmed" : "new";
+      const now = new Date();
 
       const [client] = await tx
         .insert(clients)
-        .values({ phone, name: input.name, company: input.company || null, source: "order" })
+        .values({ phone, name: input.name, company: input.company || null, email, source: "order" })
         .onConflictDoUpdate({
           target: clients.phone,
           set: {
             name: sql`coalesce(nullif(excluded.name, ''), ${clients.name})`,
             company: sql`coalesce(excluded.company, ${clients.company})`,
+            email: sql`coalesce(excluded.email, ${clients.email})`,
           },
         })
         .returning({ id: clients.id });
@@ -280,6 +299,7 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
           storageRequested: input.storage,
           commentClient: input.commentClient,
           commentInternal: input.commentInternal,
+          ...(input.start && { confirmedAt: now, holdUntil: holdFrom(now, season), priceLockedAt: lockOnConfirm(season, now) }),
         })
         .returning();
       await tx.insert(orderItems).values(
@@ -303,7 +323,24 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
           ...(input.prefillToken && { prefill: input.prefillToken }),
         },
       });
-      return { id: o.id, number, status, shortages: short };
+      if (input.start !== "invoice" && input.start !== "paid") return { id: o.id, number, status, shortages: short };
+      const paid = input.start === "paid";
+      const [pay] = await tx
+        .insert(payments)
+        .values({
+          orderId: o.id,
+          kind: "prepayment",
+          method: paid ? "cash" : "kaspi_invoice",
+          status: paid ? "paid" : "pending",
+          amount: money(o.total, o.prepaymentPct, []).prepayment,
+          paidAt: paid ? now : null,
+          recordedBy: actor?.id ?? null,
+          note: "",
+        })
+        .returning();
+      await log(tx, o.id, actor, "payment", { payload: { paymentId: pay.id, amount: pay.amount, method: pay.method, status: pay.status } });
+      const n = await syncPrepaid(tx, o, actor);
+      return { id: o.id, number, status: n.status, shortages: short };
     });
   });
 }
@@ -334,6 +371,22 @@ export const extendHold = (orderId: string, until: Date, actor: Actor) =>
     if (!(until.getTime() > Date.now())) fail("Новый срок брони — в будущем");
     await tx.update(orders).set({ holdUntil: until }).where(eq(orders.id, o.id));
     await log(tx, o.id, actor, "edit", { payload: { holdUntil: { from: o.holdUntil, to: until } } });
+  });
+
+// Another prepayment % before the prepayment: the price follows the grid of the price day for the new % (review 09.11.2026, К28)
+export const setPrepaymentPct = (orderId: string, pct: number, actor: Actor | null) =>
+  mutate(orderId, async (tx, o, season) => {
+    if (!["new", "confirmed"].includes(o.status)) fail("Процент предоплаты меняется только до предоплаты");
+    if (!isValidPct(pct, season.settings))
+      fail(`Предоплата — от ${season.settings.prepayment_min_pct} до ${season.settings.prepayment_max_pct} % с шагом ${season.settings.prepayment_step}`);
+    if (pct === o.prepaymentPct) return;
+    if ((await paysOf(tx, o.id)).some((p) => p.status === "pending")) fail("Сначала отмените выставленный счёт Kaspi: он на прежнюю сумму");
+    const rules = await seasonRules(o.seasonId, tx);
+    for (const it of await itemRows(tx, o.id))
+      if (!findRule(rules, it.tulipType as TulipType, priceDay(o, it.createdAt), pct)) fail(`Нет цены для предоплаты ${pct} % — проверьте сетку цен`);
+    const [n] = await tx.update(orders).set({ prepaymentPct: pct }).where(eq(orders.id, o.id)).returning();
+    await log(tx, o.id, actor, "edit", { payload: { pct: { from: o.prepaymentPct, to: pct } } });
+    await syncPrepaid(tx, await reprice(tx, n, actor), actor);
   });
 
 export const cancelOrder = (orderId: string, reason: string, actor: Actor) =>
@@ -608,7 +661,7 @@ export async function orderCard(id: string) {
 export type OrderCardData = NonNullable<Awaited<ReturnType<typeof orderCard>>>;
 
 // The order as the WhatsApp templates see it (lib/templates.ts)
-export function orderView({ order: o, client, items, season, money: m }: OrderCardData): OrderView {
+export function orderView({ order: o, client, items, payments: pays, season, money: m }: OrderCardData): OrderView {
   return {
     number: o.number,
     lines: items.map((i) => ({ name: i.substituteName ?? i.name, qtyPacks: i.qtyPacks, packSize: i.packSize, unitPrice: i.unitPrice, lineTotal: i.lineTotal })),
@@ -620,6 +673,9 @@ export function orderView({ order: o, client, items, season, money: m }: OrderCa
     prepayment: m.prepayment,
     prepaymentDue: m.prepaymentDue,
     balance: m.balance,
+    paid: m.paid,
+    invoice: pays.filter((p) => p.status === "pending").reduce((a, p) => a + p.amount, 0),
+    priceDay: almatyDay(o.priceLockedAt ?? new Date()),
     phone: prettyPhone(client.phone),
     holdUntil: o.status === "confirmed" ? o.holdUntil : null,
     pickupDate: o.pickupDate,

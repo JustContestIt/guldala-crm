@@ -94,7 +94,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h1>Заказы (сайт + ручные)</h1>
-        <Link href="/orders/new" className="btn btn-primary min-h-12 shrink-0 px-6 text-base font-bold">
+        <Link href="/quote" className="btn btn-primary min-h-12 shrink-0 px-6 text-base font-bold">
           + Заказ
         </Link>
       </div>
@@ -172,6 +172,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                       <p className="truncate font-semibold">{who(r)}</p>
                       <p className="font-semibold tabular-nums">{tenge(r.total)}</p>
                       {waiting(r) && <p className="text-muted">{waiting(r)}</p>}
+                      {invoiceOf.has(r.id) && <p className="font-semibold text-warn">Ожидается оплата · {tenge(invoiceOf.get(r.id)!.amount)}</p>}
                       {r.status === "confirmed" && r.holdUntil && <p className="font-semibold text-up">бронь: {left(r.holdUntil)}</p>}
                     </Link>
                     <NextStep r={r} invoice={invoiceOf.get(r.id)} ready={ready} />

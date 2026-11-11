@@ -29,6 +29,7 @@ export function describeEvent(e: Ev): string {
           : `Замена снята: ${p.substitution.item}`;
       if (p.issued) return `Выдано частично: ${p.issued}`;
       if (p.holdUntil) return `Бронь продлена до ${dmhm(new Date(p.holdUntil.to))}`;
+      if (p.pct) return `Предоплата ${p.pct.from} % → ${p.pct.to} %, цена пересчитана`;
       return "Изменён";
     case "message_sent":
       return `Отправлено в WhatsApp: ${TEMPLATE[p.template] ?? p.template}${p.provider === "fake" ? " (тестовый режим)" : ""}`;

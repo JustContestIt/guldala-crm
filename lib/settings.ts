@@ -12,7 +12,7 @@ export type SeasonSettings = {
   peak_hours_from: string; // YYYY-MM-DD, from this day pickup_hours_peak apply
   ready_status_enabled: boolean;
   issue_on_full_payment_allowed: boolean;
-  price_lock_on: "prepaid" | "confirmed"; // open question 2
+  price_lock_on: "prepaid" | "confirmed"; // confirmed = at the booking, for every % (Nikita 10.11.2026, К28)
   client_notifications: "manual" | "auto";
   stock_few_below_pct: number; // the site says «мало» below this % of the plan (spec §14)
   storage_fee_per_day: number; // ₸ per order for each day in the fridge, from the order day to pickup (spec §9)
@@ -31,7 +31,7 @@ export const DEFAULT_SETTINGS: SeasonSettings = {
   peak_hours_from: "",
   ready_status_enabled: true, // the «На выдачу» column (Nikita 09.11.2026)
   issue_on_full_payment_allowed: true,
-  price_lock_on: "prepaid",
+  price_lock_on: "confirmed",
   client_notifications: "manual",
   stock_few_below_pct: 30,
   storage_fee_per_day: 1000,

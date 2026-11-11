@@ -10,6 +10,7 @@ import {
   invoiceAction,
   issueAction,
   paymentAction,
+  pctAction,
   statusAction,
   substituteAction,
 } from "@/app/(main)/actions";
@@ -23,6 +24,7 @@ import { left } from "@/lib/board";
 import { discountAmount } from "@/lib/calc";
 import { describeEvent } from "@/lib/events";
 import { almatyDay, dm, dmhm, hhmm, prettyPhone, tenge } from "@/lib/format";
+import { pctOptions } from "@/lib/settings";
 import { ORDER_TEMPLATES, orderText, type OrderTemplate } from "@/lib/templates";
 import { tulips } from "@/services/catalog";
 import { orderCard, orderView } from "@/services/orders";
@@ -30,7 +32,7 @@ import { orderCard, orderView } from "@/services/orders";
 export const metadata: Metadata = { title: "Заказ" };
 
 const METHOD = { kaspi_invoice: "Kaspi", cash: "Наличные", bank_transfer: "Перевод" } as const;
-const PAY_STATUS = { pending: "ждём оплату", paid: "оплачено", cancelled: "отменён" } as const;
+const PAY_STATUS = { pending: "ожидается оплата", paid: "оплачено", cancelled: "отменён" } as const;
 
 // datetime-local value in Almaty time (UTC+5 all year)
 const localInput = (d: Date) => new Date(d.getTime() + 5 * 3_600_000).toISOString().slice(0, 16);
@@ -78,7 +80,11 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
       <header className="space-y-1">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-sm text-muted tabular-nums">{o.number}</h1>
-          <StatusBadge status={o.status} />
+          <span className="flex flex-wrap justify-end gap-1">
+            {/* a Kaspi invoice is out and not paid yet (review 09.11.2026, К29) */}
+            {invoice && <span className="inline-flex rounded-full bg-warn-bg px-2.5 py-0.5 text-xs font-semibold text-warn">Ожидается оплата</span>}
+            <StatusBadge status={o.status} />
+          </span>
         </div>
         <p className="text-lg font-bold">{[client.company, client.name].filter(Boolean).join(" · ") || "Без имени"}</p>
         <p className="flex flex-wrap gap-3 text-sm">
@@ -112,6 +118,19 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             {m.prepaymentDue > 0 && o.status === "confirmed" && <span className="text-up"> · осталось {tenge(m.prepaymentDue)}</span>}
           </span>
         </div>
+        {/* the client picks another %: the price follows the grid of the booking day (review 09.11.2026, К28) */}
+        {(o.status === "new" || o.status === "confirmed") && !invoice && (
+          <ActionForm toast action={pctAction} className="space-y-2 py-1">
+            <input type="hidden" name="id" value={o.id} />
+            <div className="flex gap-1" role="group" aria-label="Процент предоплаты">
+              {pctOptions(s).map((v) => (
+                <Submit key={v} name="pct" value={String(v)} className={`min-h-9 min-w-0 flex-1 px-0 text-xs ${v === o.prepaymentPct ? "btn-primary" : ""}`}>
+                  {v}%
+                </Submit>
+              ))}
+            </div>
+          </ActionForm>
+        )}
         <div className="flex justify-between">
           <span className="text-muted">К оплате</span>
           <b className="tabular-nums">{tenge(m.balance)}</b>

@@ -37,5 +37,12 @@ export function normalizePhone(s: string): string | null {
   return m ? `+7${m[1]}` : null;
 }
 
+// " Aigul@Mail.KZ " → "aigul@mail.kz"; "" → null (no address); undefined when it isn't an address
+export function normalizeEmail(s: string): string | null | undefined {
+  const e = s.trim().toLowerCase();
+  if (!e) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : undefined;
+}
+
 // "+77771006667" → "+7 777 100 66 67"
 export const prettyPhone = (p: string) => p.replace(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/, "+7 $1 $2 $3 $4");

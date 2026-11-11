@@ -31,13 +31,17 @@ const parseLines = (s: string) =>
     })
     .filter((l) => /^[0-9a-f-]{36}$/i.test(l.productId));
 
+// «Вручную»: the button pressed says how the order starts (review 09.11.2026, К28); no button, no order
 export async function createOrderAction(_: FormState, fd: FormData): Promise<FormState> {
   const user = await requireUser();
+  const start = str(fd, "start");
+  if (start !== "hold" && start !== "invoice" && start !== "paid") return { error: "Выберите: бронь, наличные или счёт Kaspi" };
   const r = await o.createOrder(
     {
       phone: str(fd, "phone", 30),
       name: str(fd, "name", 100),
       company: str(fd, "company", 150),
+      email: str(fd, "email", 200),
       lines: parseLines(str(fd, "lines", 2000)),
       pct: int(fd, "pct"),
       pickupDate: day(fd, "pickupDate"),
@@ -47,11 +51,18 @@ export async function createOrderAction(_: FormState, fd: FormData): Promise<For
       commentClient: str(fd, "commentClient", 2000),
       commentInternal: str(fd, "commentInternal", 2000),
       channel: oneOf(fd, "channel", ["whatsapp", "instagram", "telegram", "phone", "in_person", "site"], "whatsapp"),
+      start,
     },
     actorOf(user),
   );
   if (!r.ok) return { error: r.error };
-  redirect(`/orders/${r.id}?msg=booking`);
+  redirect(`/quote?order=${r.id}`); // the confirmation by fact is written from the saved order (К31)
+}
+
+export async function pctAction(_: FormState, fd: FormData): Promise<FormState> {
+  const actor = actorOf(await requireUser());
+  const id = uuid(fd, "id");
+  return id ? reply(await o.setPrepaymentPct(id, int(fd, "pct"), actor), "Процент предоплаты изменён, цена пересчитана") : noOrder;
 }
 
 // One order-id action: confirm, resume, ready
@@ -94,7 +105,7 @@ export async function paymentAction(_: FormState, fd: FormData): Promise<FormSta
     { amount: int(fd, "amount"), method: oneOf(fd, "method", METHODS, "kaspi_invoice"), paid, invoiceRef: str(fd, "invoiceRef", 100), note: str(fd, "note", 300) },
     actor,
   );
-  return reply(r, paid ? `Оплата записана${r.ok ? movedIf(before, await o.orderStatus(id)) : ""}` : "Счёт записан, ждём оплату");
+  return reply(r, paid ? `Оплата записана${r.ok ? movedIf(before, await o.orderStatus(id)) : ""}` : "Счёт записан, ожидается оплата");
 }
 
 export async function invoiceAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -174,6 +185,7 @@ export async function clientAction(_: FormState, fd: FormData): Promise<FormStat
   const r = await updateClient(id, {
     name: str(fd, "name", 100),
     company: str(fd, "company", 150),
+    email: str(fd, "email", 200),
     clientType: oneOf(fd, "clientType", Object.keys(CLIENT_TYPES) as ClientType[], "flower_shop"),
     notes: str(fd, "notes", 2000),
   });

@@ -53,7 +53,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           {CLIENT_TYPES[c.clientType]} · {CLIENT_SOURCES[c.source]} {almatyDay(c.createdAt).split("-").reverse().join(".")}
         </p>
       </header>
-      <Link href={`/orders/new?phone=${encodeURIComponent(c.phone)}`} className="btn btn-primary w-full">
+      <Link href={`/quote?phone=${encodeURIComponent(c.phone)}`} className="btn btn-primary w-full">
         Новый заказ
       </Link>
 
@@ -151,6 +151,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </Field>
           <Field label="Магазин / компания">
             <input name="company" defaultValue={c.company ?? ""} className="input" />
+          </Field>
+          <Field label="Почта: сюда уходит подтверждение заказа" className="col-span-2">
+            <input name="email" type="email" inputMode="email" defaultValue={c.email ?? ""} className="input" />
           </Field>
           <Field label="Тип" className="col-span-2">
             <select name="clientType" defaultValue={c.clientType} className="input">

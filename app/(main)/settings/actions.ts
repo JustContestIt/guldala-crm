@@ -46,7 +46,7 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
     peak_hours_from: day(fd, "peak_hours_from") ?? "",
     ready_status_enabled: fd.get("ready_status_enabled") === "on",
     issue_on_full_payment_allowed: fd.get("issue_on_full_payment_allowed") === "on",
-    price_lock_on: oneOf(fd, "price_lock_on", ["prepaid", "confirmed"], "prepaid"),
+    price_lock_on: oneOf(fd, "price_lock_on", ["prepaid", "confirmed"], "confirmed"),
     client_notifications: oneOf(fd, "client_notifications", ["manual", "auto"], "manual"),
     stock_few_below_pct: int(fd, "stock_few_below_pct"),
     storage_fee_per_day: 0, // the fridge is gone (review 09.11.2026, С2): nobody can ask for it, a saved season charges nothing

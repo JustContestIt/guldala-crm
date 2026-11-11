@@ -275,6 +275,67 @@ describe.skipIf(!enabled)("orders service", async () => {
     expect(order.holdUntil!.getTime()).toBeGreaterThan(Date.now() + 2 * 86_400_000);
   });
 
+  it("«Вручную» skips «Новый»: a hold, an awaited Kaspi invoice, a cash prepayment (К28)", async () => {
+    const lines = [{ productId: pink, qtyPacks: 4 }]; // 24 000 ₸, 40 % = 9 600
+    const hold = ok(await o.createOrder({ ...base, lines, start: "hold", email: " Aigul@Mail.KZ " }, actor));
+    const [h] = await db.select().from(s.orders).where(eq(s.orders.id, hold.id));
+    expect(h).toMatchObject({ status: "confirmed" });
+    expect(h.priceLockedAt).not.toBeNull(); // the grid of the booking day (price_lock_on "confirmed" by default)
+    expect(Math.abs(h.holdUntil!.getTime() - Date.now() - 3 * 86_400_000)).toBeLessThan(60_000);
+    expect((await available(seasonId)).get(pink)).toBe(3000 - 120);
+    const client = async () => (await db.select().from(s.clients).where(eq(s.clients.phone, base.phone)))[0];
+    expect((await client()).email).toBe("aigul@mail.kz");
+
+    const inv = ok(await o.createOrder({ ...base, lines, start: "invoice" }, null)); // the site's «Оплатить предоплату» too
+    expect(inv.status).toBe("confirmed");
+    const [p] = await db.select().from(s.payments).where(eq(s.payments.orderId, inv.id));
+    expect(p).toMatchObject({ kind: "prepayment", method: "kaspi_invoice", status: "pending", amount: 9_600 });
+    expect(o.orderView((await o.orderCard(inv.id))!).invoice).toBe(9_600);
+    ok(await o.markInvoicePaid(p.id, actor));
+    expect(await statusOf(inv.id)).toBe("prepaid");
+
+    const cash = ok(await o.createOrder({ ...base, lines, start: "paid" }, actor));
+    expect(cash.status).toBe("prepaid");
+    const card = (await o.orderCard(cash.id))!;
+    expect(card.money).toMatchObject({ paid: 9_600, balance: 14_400 });
+    expect(card.events.filter((e) => e.e.type === "status_change").map((e) => e.e.toStatus).sort()).toEqual(["confirmed", "prepaid"]); // one transaction, one timestamp
+    expect((await client()).email).toBe("aigul@mail.kz"); // an order without e-mail keeps the one on file
+
+    expect(await o.createOrder({ ...base, lines: [{ productId: red, qtyPacks: 6 }], start: "hold" }, actor)).toEqual({
+      ok: false,
+      error: "Не хватает: Красный классический — свободно 5 пач., запрошено 6",
+    });
+    expect((await o.createOrder({ ...base, lines, start: "paid" }, null)).ok).toBe(false);
+    expect((await o.createOrder({ ...base, lines, start: "hold", email: "aigul@" }, actor)).ok).toBe(false);
+  });
+
+  it("a booking keeps the grid of its day for any prepayment % (К28)", async () => {
+    const { id } = ok(await o.createOrder({ ...base, lines: [{ productId: pink, qtyPacks: 4 }], start: "hold" }, actor)); // 200 ₸ at 40 %
+    // booked two days ago; since then the grid went up
+    const lockDay = addDays(almatyDay(new Date()), -2);
+    const then = new Date(Date.now() - 2 * 86_400_000);
+    await db.update(s.orders).set({ priceLockedAt: then }).where(eq(s.orders.id, id));
+    await db.update(s.orderItems).set({ createdAt: then }).where(eq(s.orderItems.orderId, id));
+    await db.update(s.priceRules).set({ dateTo: lockDay }).where(eq(s.priceRules.tulipType, "classic"));
+    await db.insert(s.priceRules).values([
+      { seasonId, tulipType: "classic", dateFrom: addDays(lockDay, 1), dateTo: "2027-03-08", prepaymentMinPct: 40, prepaymentMaxPct: 90, pricePerStem: 250 },
+      { seasonId, tulipType: "classic", dateFrom: addDays(lockDay, 1), dateTo: "2027-03-08", prepaymentMinPct: 100, prepaymentMaxPct: 100, pricePerStem: 230 },
+    ]);
+    const total = async () => (await o.orderCard(id))!.order.total; // opening the card reprices
+    expect(await total()).toBe(120 * 200);
+    ok(await o.setPrepaymentPct(id, 100, actor));
+    expect(await total()).toBe(120 * 180); // the 100 % price of the booking day, not today's 230
+    ok(await o.setPrepaymentPct(id, 60, actor));
+    expect(await total()).toBe(120 * 200);
+
+    ok(await o.recordPayment(id, { amount: 14_400, method: "kaspi_invoice", paid: false, invoiceRef: "", note: "" }, actor));
+    expect((await o.setPrepaymentPct(id, 100, actor)).ok).toBe(false); // the invoice is for the 60 % sum
+    const [inv] = await db.select().from(s.payments).where(eq(s.payments.orderId, id));
+    ok(await o.markInvoicePaid(inv.id, actor));
+    expect(await statusOf(id)).toBe("prepaid");
+    expect((await o.setPrepaymentPct(id, 100, actor)).ok).toBe(false);
+  });
+
   it("cancels with a reason and frees the stock", async () => {
     const { id } = await placed({ ...base, lines: [{ productId: red, qtyPacks: 4 }] });
     expect((await o.cancelOrder(id, " ", actor)).ok).toBe(false);
