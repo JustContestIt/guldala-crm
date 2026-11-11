@@ -146,7 +146,7 @@ export function Calculator(p: {
         {/* the prepayment and the rest are what the client asks about: big, apart from each other (review 09.11.2026, К26) */}
         <div className="card space-y-2">
           <div className="flex items-baseline justify-between">
-            <span className="text-muted">Итого</span>
+            <span className="text-xl font-extrabold">Итого</span>
             <span className="text-3xl font-extrabold tabular-nums">{tenge(q.total)}</span>
           </div>
           <div className="flex items-baseline justify-between gap-3 rounded-xl bg-mint px-3 py-2 text-accent-dark">
