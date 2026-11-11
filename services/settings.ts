@@ -1,11 +1,11 @@
 // Settings screen (spec §5.8): seasons, price grid, colors, stock plan. Owner only — checked in the actions.
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { appState, priceRules, products, seasons, stockAdjustments, stockPlans } from "@/db/schema";
+import { appState, orderItems, orders, priceRules, products, seasons, stockAdjustments, stockPlans } from "@/db/schema";
 import { gridProblems, type TulipType } from "@/lib/calc";
 import type { GridRule } from "@/lib/grid";
 import { DEFAULT_SETTINGS, parseHours, type SeasonSettings } from "@/lib/settings";
-import { getSeason } from "./catalog";
+import { currentSeason, getSeason } from "./catalog";
 
 type Res = { ok: true } | { ok: false; error: string };
 const ok: Res = { ok: true };
@@ -48,10 +48,27 @@ export async function createSeason(f: SeasonFields): Promise<Res & { id?: string
   return { ok: true, id: s.id };
 }
 
-export async function updateSeason(id: string, f: SeasonFields, settings: SeasonSettings): Promise<Res> {
+// The pack size is set on the Склад (setPackSize), so the season form keeps the one it has
+export async function updateSeason(id: string, f: SeasonFields, form: Omit<SeasonSettings, "pack_size">): Promise<Res> {
+  const cur = await getSeason(id);
+  if (!cur) return no("Сезон не найден");
+  const settings: SeasonSettings = { ...form, pack_size: cur.settings.pack_size };
   const p = seasonProblem(f, settings);
   if (p) return no(p);
   await db.update(seasons).set({ ...f, settings }).where(eq(seasons.id, id));
+  return ok;
+}
+
+// «Цветков в пачке» on the Склад (review 09.11.2026, К9): the season's pack and every tulip product's, so new orders,
+// the site and the bot count by it. Lines of orders already placed keep the pack they were sold in; stock stays in stems.
+export async function setPackSize(seasonId: string, n: number): Promise<Res> {
+  if (!Number.isInteger(n) || n < 1 || n > 1000) return no("Цветков в пачке — целое число больше нуля");
+  const season = await getSeason(seasonId);
+  if (!season) return no("Сезон не найден");
+  await db.transaction(async (tx) => {
+    await tx.update(seasons).set({ settings: { ...season.settings, pack_size: n } }).where(eq(seasons.id, seasonId));
+    await tx.update(products).set({ packSize: n }).where(eq(products.line, "tulpan"));
+  });
   return ok;
 }
 
@@ -112,9 +129,30 @@ export async function saveProduct(id: string | null, f: ProductFields): Promise<
   }
   const [p] = await db
     .insert(products)
-    .values({ ...values, line: "tulpan", unit: "stem", packSize: DEFAULT_SETTINGS.pack_size })
+    .values({ ...values, line: "tulpan", unit: "stem", packSize: (await currentSeason())?.settings.pack_size ?? DEFAULT_SETTINGS.pack_size })
     .returning({ id: products.id });
   return { ok: true, id: p.id };
+}
+
+// Delete for good (review 09.11.2026, К10): only a product no order ever had, cancelled and issued included —
+// those orders would lose their lines. Its own stock records go with it.
+export async function deleteProduct(id: string): Promise<Res> {
+  const used = await db
+    .selectDistinct({ number: orders.number })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(or(eq(orderItems.productId, id), eq(orderItems.substituteProductId, id)))
+    .orderBy(asc(orders.number));
+  if (used.length) {
+    const list = used.slice(0, 10).map((u) => u.number).join(", ") + (used.length > 10 ? ` и ещё ${used.length - 10}` : "");
+    return no(`Товар есть в заказах ${list} — удалить нельзя, иначе они сломаются. Снимите «В продаже»: товар скроется с сайта и из бота`);
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(stockAdjustments).where(eq(stockAdjustments.productId, id));
+    await tx.delete(stockPlans).where(eq(stockPlans.productId, id));
+    await tx.delete(products).where(eq(products.id, id));
+  });
+  return ok;
 }
 
 // The plan is typed while the season is being planned or for a color without a plan; later changes are adjustments

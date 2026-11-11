@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm, Submit } from "@/components/ActionForm";
 import { BackLink, Field } from "@/components/ui";
 import { requireOwner } from "@/lib/auth";
-import { cellName, toMatrix, TYPES } from "@/lib/grid";
 import { SEASON_STATUS } from "@/lib/settings";
-import { getSeason, seasonRules } from "@/services/catalog";
-import { saveGridAction, seasonStatusAction, updateSeasonAction } from "../../actions";
+import { getSeason } from "@/services/catalog";
+import { seasonStatusAction, updateSeasonAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Сезон" };
 
@@ -15,11 +15,7 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const season = /^[0-9a-f-]{36}$/i.test(id) ? await getSeason(id) : null;
   if (!season) notFound();
-  const rules = await seasonRules(id);
   const s = season.settings;
-  const grid = toMatrix(rules);
-  const bands = [...grid.bands, null]; // + a blank one for a new band
-  const periods = [...grid.periods, null];
 
   return (
     <div className="space-y-4">
@@ -77,10 +73,7 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
           <Field label="Пиковые часы с" className="col-span-2">
             <input name="peak_hours_from" type="date" className="input" defaultValue={s.peak_hours_from} />
           </Field>
-          <Field label="Пачка, шт">
-            <input name="pack_size" inputMode="numeric" className="input" defaultValue={s.pack_size} />
-          </Field>
-          <Field label="Минимум, шт">
+          <Field label="Минимум, шт" className="col-span-2">
             <input name="min_order_stems" inputMode="numeric" className="input" defaultValue={s.min_order_stems} />
           </Field>
           <Field label="Минимум считать" className="col-span-2">
@@ -129,76 +122,10 @@ export default async function SeasonPage({ params }: { params: Promise<{ id: str
         <Submit>Сохранить</Submit>
       </ActionForm>
 
-      <section className="card space-y-3">
-        <h2>Сетка цен, ₸ за штуку</h2>
-        <p className="text-sm text-muted">
-          Период заказа × полоса предоплаты × тип. Пустая клетка — цены нет. Пустые полоса и период внизу — для новых.
-        </p>
-        <ActionForm action={saveGridAction} className="space-y-3">
-          <input type="hidden" name="seasonId" value={season.id} />
-          <fieldset className="space-y-2">
-            <legend className="label">Полосы предоплаты, %</legend>
-            {bands.map((b, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input name="bmin" inputMode="numeric" aria-label="Предоплата от, %" placeholder="от" defaultValue={b?.min} className="input w-20" />
-                <span>–</span>
-                <input name="bmax" inputMode="numeric" aria-label="Предоплата до, %" placeholder="до" defaultValue={b?.max} className="input w-20" />
-                {b ? (
-                  <label className="flex items-center gap-1 text-sm text-muted">
-                    <input type="checkbox" name="delb" value={i} className="size-5" />
-                    удалить
-                  </label>
-                ) : (
-                  <span className="text-sm text-muted">новая</span>
-                )}
-              </div>
-            ))}
-          </fieldset>
-          {periods.map((p, j) => (
-            <fieldset key={j} className="space-y-2 rounded-xl border border-line p-3">
-              <legend className="px-1 text-sm font-semibold">{p ? `Период ${j + 1}` : "Новый период"}</legend>
-              <div className="grid grid-cols-2 gap-2">
-                <input name="pfrom" type="date" aria-label="Период с" defaultValue={p?.from} className="input" />
-                <input name="pto" type="date" aria-label="Период по" defaultValue={p?.to} className="input" />
-              </div>
-              <table className="w-full text-sm">
-                <thead className="text-left text-muted">
-                  <tr>
-                    <th className="pr-2 font-normal">Предоплата</th>
-                    <th className="font-normal">Классика</th>
-                    <th className="font-normal">Махровые</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bands.map((b, i) => (
-                    <tr key={i}>
-                      <td className="pr-2 text-muted">{b ? `${b.min}–${b.max}` : "новая"}</td>
-                      {TYPES.map((t) => (
-                        <td key={t} className="py-1 pr-2">
-                          <input
-                            name={cellName(t, j, i)}
-                            inputMode="numeric"
-                            aria-label={`${t === "classic" ? "Классика" : "Махровые"}, ${b ? `${b.min}–${b.max} %` : "новая полоса"}`}
-                            defaultValue={p && b ? grid.cells.get(cellName(t, j, i)) : undefined}
-                            className="input min-h-10 py-1 font-semibold"
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {p && (
-                <label className="flex items-center gap-2 text-sm text-muted">
-                  <input type="checkbox" name="delp" value={j} className="size-5" />
-                  удалить период
-                </label>
-              )}
-            </fieldset>
-          ))}
-          <Submit>Сохранить сетку</Submit>
-        </ActionForm>
-      </section>
+      {/* the grid has its own page in «Настройки» (review 09.11.2026, К13) */}
+      <Link href={`/settings/prices?season=${season.id}`} className="card block font-semibold text-accent">
+        Сетка цен этого сезона →
+      </Link>
 
     </div>
   );

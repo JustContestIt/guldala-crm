@@ -233,6 +233,31 @@ describe.skipIf(!enabled)("orders service", async () => {
     expect((await available(seasonId)).get(pink)).toBe(free + 120);
   });
 
+  it("Склад: who holds what, a new pack size for new orders only, deleting only a product no order had", async () => {
+    const { holds } = await import("./catalog");
+    const st = await import("./settings");
+    const a = await placed({ ...base, lines: [{ productId: pink, qtyPacks: 4 }] });
+    ok(await o.createOrder({ ...base, phone: "+77770000002", lines: [{ productId: pink, qtyPacks: 4 }] }, actor)); // new: holds nothing
+    expect((await holds(seasonId)).map((h) => [h.number, h.status, h.qtyPacks, h.client])).toEqual([[a.number, "confirmed", 4, "Цветы на Абая"]]);
+
+    const free = (await available(seasonId)).get(pink);
+    expect(await st.setPackSize(seasonId, 0)).toMatchObject({ ok: false });
+    ok(await st.setPackSize(seasonId, 25));
+    expect((await db.select().from(s.seasons).where(eq(s.seasons.id, seasonId)))[0].settings.pack_size).toBe(25);
+    expect((await db.select().from(s.products).where(eq(s.products.id, pink)))[0].packSize).toBe(25);
+    expect((await available(seasonId)).get(pink)).toBe(free); // stock is flowers, not packs
+    const [old] = await db.select().from(s.orderItems).where(eq(s.orderItems.orderId, a.id));
+    expect(old).toMatchObject({ packSize: 30, qtyStems: 120 }); // sold in packs of 30, stays so
+    const b = ok(await o.createOrder({ ...base, phone: "+77770000003", lines: [{ productId: pink, qtyPacks: 5 }] }, actor));
+    expect((await db.select().from(s.orderItems).where(eq(s.orderItems.orderId, b.id)))[0]).toMatchObject({ packSize: 25, qtyStems: 125 });
+
+    ok(await o.cancelOrder(a.id, "передумал", actor)); // even a cancelled order keeps its product
+    expect(await st.deleteProduct(pink)).toMatchObject({ ok: false, error: expect.stringContaining(a.number) });
+    expect(await st.deleteProduct(white)).toEqual({ ok: true }); // no orders: gone with its plan
+    expect(await db.select().from(s.products).where(eq(s.products.id, white))).toEqual([]);
+    expect(await db.select().from(s.stockPlans).where(eq(s.stockPlans.productId, white))).toEqual([]);
+  });
+
   it("expires a hold by itself and resumes it at today's price", async () => {
     const { id } = await placed({ ...base, lines: [{ productId: red, qtyPacks: 5 }] });
     expect((await available(seasonId)).get(red)).toBe(0);

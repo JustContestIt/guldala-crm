@@ -34,8 +34,7 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
   await requireOwner();
   const id = uuid(fd, "id");
   if (!id) return { error: "Сезон не найден" };
-  const settings: SeasonSettings = {
-    pack_size: int(fd, "pack_size"),
+  const settings: Omit<SeasonSettings, "pack_size"> = {
     min_order_stems: int(fd, "min_order_stems"),
     min_order_scope: oneOf(fd, "min_order_scope", ["total", "per_color"], "total"),
     hold_days: int(fd, "hold_days"),
@@ -68,6 +67,20 @@ export async function saveGridAction(_: FormState, fd: FormData): Promise<FormSt
   if (!seasonId) return { error: "Сезон не найден" };
   const r = fromForm(fd);
   return "error" in r ? { error: r.error } : answer(await svc.saveGrid(seasonId, r.rows), "Сетка сохранена");
+}
+
+export async function packSizeAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireOwner();
+  const seasonId = uuid(fd, "seasonId");
+  if (!seasonId) return { error: "Сезон не найден" };
+  return answer(await svc.setPackSize(seasonId, int(fd, "packSize")), "Размер пачки сохранён");
+}
+
+export async function deleteProductAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireOwner();
+  const id = uuid(fd, "id");
+  if (!id) return { error: "Товар не найден" };
+  return answer(await svc.deleteProduct(id), "Товар удалён");
 }
 
 export async function saveProductAction(_: FormState, fd: FormData): Promise<FormState> {

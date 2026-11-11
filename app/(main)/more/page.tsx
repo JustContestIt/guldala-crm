@@ -19,8 +19,13 @@ export default async function MorePage() {
               </Link>
             </li>
             <li>
+              <Link href="/settings/prices" className="block px-4 py-3 font-medium">
+                Сетка цен
+              </Link>
+            </li>
+            <li>
               <Link href="/settings" className="block px-4 py-3 font-medium">
-                Сезоны, сетка цен
+                Сезоны
               </Link>
             </li>
             <li>

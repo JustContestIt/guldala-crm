@@ -1,7 +1,7 @@
 // Season reference data: the open season, its price grid, tulip products and computed stock
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, type Db } from "@/db";
-import { orderItems, orders, priceRules, products, seasons, stockAdjustments, stockPlans } from "@/db/schema";
+import { clients, orderItems, orders, priceRules, products, seasons, stockAdjustments, stockPlans } from "@/db/schema";
 import { availableStems, RESERVING, type Rule, type StockInput, type TulipType } from "@/lib/calc";
 import type { ProductOpt } from "@/lib/quote";
 
@@ -86,6 +86,28 @@ export async function stockTable(seasonId: string) {
       available: free.get(p.id) ?? 0,
     };
   });
+}
+
+// Who holds what (review 09.11.2026, К6, К6а): lines of orders in «Бронь», «Предоплачен», «На выдачу»,
+// against the product they take (a substitute counts as itself); «Новый» holds nothing
+export async function holds(seasonId: string) {
+  return db
+    .select({
+      productId: sql<string>`coalesce(${orderItems.substituteProductId}, ${orderItems.productId})`,
+      orderId: orders.id,
+      number: orders.number,
+      status: orders.status,
+      pickupDate: orders.pickupDate,
+      client: sql<string>`coalesce(nullif(${clients.company}, ''), nullif(${clients.name}, ''), ${clients.phone})`,
+      qtyPacks: orderItems.qtyPacks,
+      qtyStems: orderItems.qtyStems,
+      issuedStems: orderItems.issuedStems,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(clients, eq(clients.id, orders.clientId))
+    .where(and(eq(orders.seasonId, seasonId), inArray(orders.status, RESERVING)))
+    .orderBy(asc(orders.pickupDate), asc(orders.number));
 }
 
 // Serialises everything that takes stock in a season (spec §9: SELECT … FOR UPDATE on stock_plans)

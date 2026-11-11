@@ -42,7 +42,8 @@ export async function seasonCurrent() {
       pickupFrom: season.pickupFrom,
       pickupTo: season.pickupTo,
       peakHoursFrom: s.peak_hours_from,
-      storageFeePerDay: s.storage_fee_per_day,
+      packSize: s.pack_size, // the site counts and writes its pack and minimum from here (review 09.11.2026, К9)
+      minStems: s.min_order_stems,
     },
     asOf: new Date().toISOString(),
     prices: { classic: at100("classic"), double: at100("double") },

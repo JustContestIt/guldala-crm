@@ -94,7 +94,7 @@ describe.skipIf(!enabled)("public API", async () => {
     const [o] = await db.select().from(s.orders);
     expect(o).toMatchObject({ commentClient: "Счёт на физ. лицо", storageRequested: true, storageFee: fee });
     expect(await pub.orderByToken(r.token)).toMatchObject({ storageFee: fee, total: 24_000 + fee, storageDays: fee / 1000 });
-    expect((await pub.seasonCurrent())!.season.storageFeePerDay).toBe(1000);
+    expect((await pub.seasonCurrent())!.season).toMatchObject({ packSize: 30, minStems: 120 });
   });
 
   it("refuses with a human text below the minimum and over stock, the client never gets a `new` order", async () => {
