@@ -63,6 +63,7 @@ export const clients = pgTable("clients", {
   phone: text().notNull().unique(),
   name: text().notNull().default(""),
   company: text(),
+  email: text(), // the order confirmation goes here (review 09.11.2026, К23, С10)
   clientType: clientType().notNull().default("flower_shop"),
   notes: text().notNull().default(""),
   source: clientSource().notNull(),
