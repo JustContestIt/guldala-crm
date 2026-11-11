@@ -9,6 +9,7 @@ import {
   extendHoldAction,
   invoiceAction,
   issueAction,
+  mailAction,
   paymentAction,
   pctAction,
   statusAction,
@@ -23,6 +24,7 @@ import { requireUser } from "@/lib/auth";
 import { left } from "@/lib/board";
 import { discountAmount } from "@/lib/calc";
 import { describeEvent } from "@/lib/events";
+import { LETTER_STATUSES } from "@/lib/letters";
 import { almatyDay, dm, dmhm, hhmm, prettyPhone, tenge } from "@/lib/format";
 import { pctOptions } from "@/lib/settings";
 import { ORDER_TEMPLATES, orderText, type OrderTemplate } from "@/lib/templates";
@@ -396,6 +398,29 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
       </div>
 
       {!msg && composer}
+
+      {/* К23: the letter goes by itself on «Бронь» and «Предоплачен»; here it goes again */}
+      {LETTER_STATUSES.includes(o.status) && (
+        <section className="card space-y-2 text-sm">
+          <h2>Письмо-подтверждение</h2>
+          {client.email ? (
+            <ActionForm toast action={mailAction} className="flex items-center justify-between gap-3">
+              <input type="hidden" name="id" value={o.id} />
+              <span className="min-w-0 truncate">{client.email}</span>
+              <Submit className="min-h-9 shrink-0 text-xs">
+                {events.some(({ e }) => e.type === "message_sent" && e.payload.template === "mail") ? "Отправить ещё раз" : "Отправить"}
+              </Submit>
+            </ActionForm>
+          ) : (
+            <p className="text-muted">
+              Почты нет.{" "}
+              <Link href={`/clients/${client.id}`} className="text-accent underline">
+                Добавить в карточке клиента
+              </Link>
+            </p>
+          )}
+        </section>
+      )}
 
       {payments.length > 0 && (
         <section className="card space-y-2">

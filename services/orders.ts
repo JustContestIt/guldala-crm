@@ -6,6 +6,7 @@ import {
   findRule,
   isValidPct,
   money,
+  prepaymentAmount,
   orderProblems,
   priceLines,
   RESERVING,
@@ -155,6 +156,22 @@ const priceDay = (o: Order, lineCreated: Date) => {
   return own > lock ? own : lock;
 };
 
+// What the order costs at every prepayment % by each line's price day: a booking's choices on the site's order page
+// and in the letter (review 09.11.2026, С9, К23). A % with no price in the grid is left out.
+export async function totalsByPct({ order: o, items }: Pick<OrderCardData, "order" | "items">, pcts: number[]) {
+  const rules = await seasonRules(o.seasonId);
+  return pcts.flatMap((pct) => {
+    let subtotal = 0;
+    for (const it of items) {
+      const rule = findRule(rules, it.tulipType as TulipType, priceDay(o, it.createdAt), pct);
+      if (!rule) return [];
+      subtotal += it.qtyStems * rule.pricePerStem;
+    }
+    const total = subtotal - Math.min(o.discountAmount, subtotal) + o.storageFee;
+    return [{ pct, total, prepayment: prepaymentAmount(total, pct) }];
+  });
+}
+
 // Brings the lines to the grid of their price day; a prepaid order keeps what it was paid at
 async function reprice(tx: Db, o: Order, actor: Actor | null) {
   if (!["new", "confirmed", "expired"].includes(o.status)) return o;
@@ -187,12 +204,20 @@ async function syncPrepaid(tx: Db, o: Order, actor: Actor | null) {
 function mutate<T extends object>(orderId: string, fn: (tx: Db, o: Order, season: Season) => Promise<T | void>) {
   return run<T>(async () => {
     await expireHolds();
-    return db.transaction(async (tx) => {
+    const { r, from, to } = await db.transaction(async (tx) => {
       const o = await lockOrder(tx, orderId);
-      return fn(tx, o, (await getSeason(o.seasonId, tx))!);
+      const r = await fn(tx, o, (await getSeason(o.seasonId, tx))!);
+      const [{ status }] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId));
+      return { r, from: o.status, to: status };
     });
+    await mailOnStatus(orderId, from, to);
+    return r;
   });
 }
+
+// К23: the confirmation letter once the order becomes «Бронь» or «Предоплачен», after the commit.
+// Imported on use: the letter module reads the order back through this one.
+const mailOnStatus = async (orderId: string, from: Status | null, to: Status) => (await import("./confirmations")).mailOnStatus(orderId, from, to);
 
 const holdFrom = (now: Date, s: Season) => new Date(now.getTime() + s.settings.hold_days * 24 * HOUR);
 const lockOnConfirm = (s: Season, now: Date) => (s.settings.price_lock_on === "confirmed" ? now : null);
@@ -249,7 +274,7 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
     const storageFee = input.storage ? storageDays(day, input.pickupDate) * s.storage_fee_per_day : 0;
 
     await expireHolds();
-    return db.transaction(async (tx) => {
+    const created = await db.transaction(async (tx) => {
       await lockStock(tx, season.id);
       const short = shortages(
         priced.lines.map((l, i) => ({ productId: l.productId!, name: lines[i].name, qtyStems: l.qtyStems, packSize: l.packSize })),
@@ -342,6 +367,8 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
       const n = await syncPrepaid(tx, o, actor);
       return { id: o.id, number, status: n.status, shortages: short };
     });
+    await mailOnStatus(created.id, null, created.status);
+    return created;
   });
 }
 

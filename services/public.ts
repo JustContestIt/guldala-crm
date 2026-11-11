@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { orderText } from "@/lib/templates";
 import { currentSeason, seasonRules, stockInput, tulips } from "./catalog";
 import { sendMessage, whatsappConversation } from "./messages";
-import { createOrder, orderCard, orderView, type Channel } from "./orders";
+import { createOrder, orderCard, orderView, totalsByPct, type Channel } from "./orders";
 
 export const SITE_PCTS = [40, 60, 80, 100]; // the site and the assistant offer these prepayments
 const DAY = 86_400_000;
@@ -74,11 +74,12 @@ export async function seasonCurrent() {
 export type SiteOrder = {
   items: { productId: string; packs: number }[];
   prepaymentPct: number;
+  payNow?: boolean; // С9: the client pays the prepayment now: «Бронь» at once with a Kaspi invoice awaited; otherwise «Новый»
   pickupDate: string;
   pickupSlot: string; // "08:00–12:00": the CRM keeps the start as pickup_time
   pickupMethod: string;
   storage: boolean;
-  client: { company: string; name: string; phone: string; legalType: string; bin: string; orgName: string };
+  client: { company: string; name: string; phone: string; email?: string; legalType: string; bin: string; orgName: string };
   comment: string;
   prefillToken: string;
 };
@@ -107,6 +108,8 @@ export async function createSiteOrder(o: SiteOrder, channel: Channel = "site") {
       channel,
       createdBy: "client",
       prefillToken: o.prefillToken || null,
+      email: o.client.email,
+      start: o.payNow ? "invoice" : undefined,
     },
     null,
   );
@@ -154,6 +157,8 @@ export async function orderByToken(token: string) {
     paid: m.paid,
     prepaymentDue: m.prepaymentDue,
     invoice: invoice ? { provider: "kaspi" as const, amount: invoice.amount, expiresAt: null } : null,
+    // a booking waiting for the client's prepayment: what it costs at every % by the held prices (С9)
+    options: o.status === "confirmed" && !invoice ? await totalsByPct(card, SITE_PCTS) : [],
     pickup: { date: o.pickupDate, slot: hhmm(o.pickupTime), method: o.pickupMethod === "client_truck" ? "client_truck" : "self", storage: o.storageRequested },
     events: events
       .map(({ e }) => ({ at: e.createdAt.toISOString(), type: eventType(e) }))

@@ -7,7 +7,7 @@ import { ORDER_TEMPLATES } from "./templates";
 type Ev = { type: string; fromStatus: string | null; toStatus: string | null; payload: Record<string, unknown> };
 const st = (s: string | null) => (s ? STATUS_LABEL[s as Status] ?? s : "");
 const METHOD: Record<string, string> = { kaspi_invoice: "Kaspi", cash: "наличные", bank_transfer: "перевод" };
-const TEMPLATE: Record<string, string> = { ...ORDER_TEMPLATES, quote: "Расчёт" };
+const TEMPLATE: Record<string, string> = { ...ORDER_TEMPLATES, quote: "Расчёт", mail: "письмо-подтверждение" };
 
 export function describeEvent(e: Ev): string {
   const p = e.payload as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -32,6 +32,7 @@ export function describeEvent(e: Ev): string {
       if (p.pct) return `Предоплата ${p.pct.from} % → ${p.pct.to} %, цена пересчитана`;
       return "Изменён";
     case "message_sent":
+      if (p.template === "mail") return `Письмо-подтверждение на ${p.to}${p.provider === "fake" ? " (тестовый режим)" : ""}`;
       return `Отправлено в WhatsApp: ${TEMPLATE[p.template] ?? p.template}${p.provider === "fake" ? " (тестовый режим)" : ""}`;
     case "note":
       return p.noShow ? `Не приехал за заказом ${dm(p.noShow)}` : "Заметка";

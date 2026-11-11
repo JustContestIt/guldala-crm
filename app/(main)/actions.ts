@@ -9,6 +9,7 @@ import { messaging } from "@/integrations/messaging";
 import { CLIENT_TYPES, updateClient, type ClientType } from "@/services/clients";
 import { deleteDraft, sendDraft, sendMessage, setAssistantMuted } from "@/services/messages";
 import { STATUS_LABEL } from "@/lib/status";
+import { sendConfirmation } from "@/services/confirmations";
 import * as o from "@/services/orders";
 import { createPrefill } from "@/services/public";
 
@@ -63,6 +64,15 @@ export async function pctAction(_: FormState, fd: FormData): Promise<FormState> 
   const actor = actorOf(await requireUser());
   const id = uuid(fd, "id");
   return id ? reply(await o.setPrepaymentPct(id, int(fd, "pct"), actor), "Процент предоплаты изменён, цена пересчитана") : noOrder;
+}
+
+// «Отправить ещё раз»: the confirmation letter to the client's e-mail (review 09.11.2026, К23)
+export async function mailAction(_: FormState, fd: FormData): Promise<FormState> {
+  const actor = actorOf(await requireUser());
+  const id = uuid(fd, "id");
+  if (!id) return noOrder;
+  const r = await sendConfirmation(id, actor);
+  return reply(r, r.ok ? `Письмо отправлено на ${r.to}` : "");
 }
 
 // One order-id action: confirm, resume, ready
