@@ -29,11 +29,11 @@ export function LinesEditor({
       ));
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {lines.map((l, i) => {
         const price = prices[i];
         return (
-          <div key={i} className="rounded-xl border border-line p-2">
+          <div key={i} className="card">
             <div className="flex gap-2">
               <select value={l.key} onChange={(e) => set(i, { key: e.target.value })} aria-label="Цвет" className="input min-w-0 flex-1">
                 {allowAny && (
@@ -72,7 +72,7 @@ export function LinesEditor({
               <span className="ml-auto text-right text-sm">
                 {price ? (
                   <>
-                    <span className="text-muted">
+                    <span className="whitespace-nowrap text-muted">
                       {price.qtyStems} шт × {tenge(price.unitPrice)}
                     </span>
                     <br />

@@ -14,11 +14,6 @@ export default async function MorePage() {
         {user.role === "owner" && (
           <>
             <li>
-              <Link href="/settings/products" className="block px-4 py-3 font-medium">
-                Склад · товары и остатки
-              </Link>
-            </li>
-            <li>
               <Link href="/settings/prices" className="block px-4 py-3 font-medium">
                 Сетка цен
               </Link>

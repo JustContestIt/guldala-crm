@@ -37,6 +37,7 @@ export async function createOrderAction(_: FormState, fd: FormData): Promise<For
   const user = await requireUser();
   const start = str(fd, "start");
   if (start !== "hold" && start !== "invoice" && start !== "paid") return { error: "Выберите: бронь, наличные или счёт Kaspi" };
+  if (!str(fd, "email", 200)) return { error: "Укажите почту клиента: на неё придёт подтверждение заказа" }; // review 12.11.2026, П1
   const r = await o.createOrder(
     {
       phone: str(fd, "phone", 30),
@@ -47,7 +48,7 @@ export async function createOrderAction(_: FormState, fd: FormData): Promise<For
       pct: int(fd, "pct"),
       pickupDate: day(fd, "pickupDate"),
       pickupTime: hm(fd, "pickupTime"),
-      pickupMethod: oneOf(fd, "pickupMethod", ["self_pickup", "client_truck"], "self_pickup"),
+      pickupMethod: oneOf(fd, "pickupMethod", ["self_pickup", "delivery"], "self_pickup"),
       storage: false, // no fridge (review 09.11.2026, С2)
       commentClient: str(fd, "commentClient", 2000),
       commentInternal: str(fd, "commentInternal", 2000),

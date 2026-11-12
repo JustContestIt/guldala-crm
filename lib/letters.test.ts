@@ -23,6 +23,7 @@ const order: LetterOrder = {
   paid: 0,
   invoice: 0,
   priceDay: "2026-11-11",
+  prepayOff: 0,
   phone: "+7 701 888 44 46",
   holdUntil: new Date("2026-11-14T13:00:00Z"), // 18:00 in Almaty
   pickupDate: "2027-03-05",
@@ -56,6 +57,21 @@ describe("confirmationLetter", () => {
     expect(text).toContain("Ожидаем оплату счёта Kaspi на 72 000 ₸");
     expect(text).not.toContain("— предоплата 40 %");
     expect(text).toContain("Итого: 180 000 ₸\n");
+  });
+
+  it("a request from the site: «заявка получена», no options yet (review 12.11.2026, П2)", () => {
+    const { subject, text } = letter({ ...order, status: "new", holdUntil: null, options: [] });
+    expect(subject).toBe("Заказ T-2027-0042: заявка получена");
+    expect(text).toContain("Мы получили вашу заявку на заказ T-2027-0042");
+    expect(text).toContain("Проверим наличие и подтвердим бронь в WhatsApp на номер +7 701 888 44 46");
+    expect(text).toContain("Итого: 180 000 ₸\n");
+  });
+
+  it("delivery has its own pickup line; a 100 % discount is named (review 12.11.2026, С3, Ц4)", () => {
+    const { text } = letter({ ...order, pickupMethod: "delivery", prepayOff: 10 });
+    expect(text).toContain("Доставка 05.03.2027 10:00: стоимость доставки определяется отдельно, по договорённости с продавцом.");
+    expect(text).not.toContain("самовывоз");
+    expect(text).toContain("Цены со скидкой 10 % за 100 % предоплату.");
   });
 
   it("prepaid: the money received and what is left to pay at pickup", () => {

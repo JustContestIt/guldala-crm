@@ -49,13 +49,29 @@ export async function createSeason(f: SeasonFields): Promise<Res & { id?: string
 }
 
 // The pack size is set on the Склад (setPackSize), so the season form keeps the one it has
-export async function updateSeason(id: string, f: SeasonFields, form: Omit<SeasonSettings, "pack_size">): Promise<Res> {
+// The pack lives on the Склад, the 100 % discount by the price grid: the season form keeps what it doesn't show
+export type SeasonForm = Omit<SeasonSettings, "pack_size" | "full_prepay_discount_pct" | "full_prepay_min_days">;
+
+export async function updateSeason(id: string, f: SeasonFields, form: SeasonForm): Promise<Res> {
   const cur = await getSeason(id);
   if (!cur) return no("Сезон не найден");
-  const settings: SeasonSettings = { ...form, pack_size: cur.settings.pack_size };
+  const settings: SeasonSettings = { ...DEFAULT_SETTINGS, ...cur.settings, ...form, pack_size: cur.settings.pack_size };
   const p = seasonProblem(f, settings);
   if (p) return no(p);
   await db.update(seasons).set({ ...f, settings }).where(eq(seasons.id, id));
+  return ok;
+}
+
+// «Скидка за 100 % предоплату» by the price grid (review 12.11.2026, Ц2): 0 % turns it off
+export async function setPrepayDiscount(seasonId: string, pct: number, days: number): Promise<Res> {
+  if (!Number.isInteger(pct) || pct < 0 || pct > 50) return no("Скидка — целое число от 0 до 50 %");
+  if (!Number.isInteger(days) || days < 0 || days > 365) return no("Дней до выдачи — целое число от 0 до 365");
+  const season = await getSeason(seasonId);
+  if (!season) return no("Сезон не найден");
+  await db
+    .update(seasons)
+    .set({ settings: { ...season.settings, full_prepay_discount_pct: pct, full_prepay_min_days: days } })
+    .where(eq(seasons.id, seasonId));
   return ok;
 }
 

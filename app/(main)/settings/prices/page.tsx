@@ -2,13 +2,14 @@ import { desc } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm, Submit } from "@/components/ActionForm";
-import { BackLink } from "@/components/ui";
+import { BackLink, Field } from "@/components/ui";
 import { db } from "@/db";
 import { seasons } from "@/db/schema";
 import { requireOwner } from "@/lib/auth";
 import { cellName, toMatrix, TYPES } from "@/lib/grid";
 import { currentSeason, seasonRules } from "@/services/catalog";
-import { saveGridAction } from "../actions";
+import { prepayDiscountTerms } from "@/lib/settings";
+import { discountAction, saveGridAction } from "../actions";
 
 export const metadata: Metadata = { title: "Сетка цен" };
 
@@ -27,6 +28,7 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
   const grid = toMatrix(await seasonRules(season.id));
   const bands = [...grid.bands, null]; // + a blank one for a new band
   const periods = [...grid.periods, null];
+  const off = prepayDiscountTerms(season.settings);
 
   return (
     <div className="space-y-4">
@@ -42,9 +44,28 @@ export default async function PricesPage({ searchParams }: { searchParams: Promi
         </div>
       )}
       <section className="card space-y-3">
+        <h2>Скидка за 100 % предоплату</h2>
+        <p className="text-sm text-muted">
+          Цена из сетки одна для любой предоплаты. Только при 100 % и если до даты выдачи не меньше указанных дней, цена за штуку ниже на этот
+          процент. 0 % — скидки нет.
+        </p>
+        <ActionForm action={discountAction} className="space-y-3">
+          <input type="hidden" name="seasonId" value={season.id} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Скидка, %">
+              <input name="discountPct" inputMode="numeric" defaultValue={off.pct} className="input" />
+            </Field>
+            <Field label="Дней до выдачи, не меньше">
+              <input name="discountDays" inputMode="numeric" defaultValue={off.days} className="input" />
+            </Field>
+          </div>
+          <Submit>Сохранить скидку</Submit>
+        </ActionForm>
+      </section>
+      <section className="card space-y-3">
         <h2>Цена за штуку, ₸</h2>
         <p className="text-sm text-muted">
-          Период заказа × полоса предоплаты × тип. Пустая клетка — цены нет. Пустые полоса и период внизу — для новых.
+          Период заказа × полоса предоплаты × тип. Одна полоса 40–100 % — одна цена для любой предоплаты. Пустая клетка — цены нет. Пустые полоса и период внизу — для новых.
         </p>
         <ActionForm action={saveGridAction} className="space-y-3">
           <input type="hidden" name="seasonId" value={season.id} />

@@ -43,6 +43,13 @@
       "when": 1794361964945,
       "tag": "0005_client_email",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794498744721,
+      "tag": "0006_pickup_delivery",
+      "breakpoints": true
     }
   ]
 }

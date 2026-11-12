@@ -3,11 +3,13 @@ import { and, asc, desc, eq, ilike, inArray, isNotNull, lt, or, sql } from "driz
 import { db, type Db } from "@/db";
 import { clients, orderEvents, orderItems, orders, payments, products, seasons, users } from "@/db/schema";
 import {
+  discounted,
   findRule,
   isValidPct,
   money,
   prepaymentAmount,
   orderProblems,
+  prepayDiscountPct,
   priceLines,
   RESERVING,
   shortages,
@@ -160,12 +162,14 @@ const priceDay = (o: Order, lineCreated: Date) => {
 // and in the letter (review 09.11.2026, С9, К23). A % with no price in the grid is left out.
 export async function totalsByPct({ order: o, items }: Pick<OrderCardData, "order" | "items">, pcts: number[]) {
   const rules = await seasonRules(o.seasonId);
+  const settings = (await getSeason(o.seasonId))!.settings;
   return pcts.flatMap((pct) => {
     let subtotal = 0;
     for (const it of items) {
-      const rule = findRule(rules, it.tulipType as TulipType, priceDay(o, it.createdAt), pct);
+      const day = priceDay(o, it.createdAt);
+      const rule = findRule(rules, it.tulipType as TulipType, day, pct);
       if (!rule) return [];
-      subtotal += it.qtyStems * rule.pricePerStem;
+      subtotal += it.qtyStems * discounted(rule.pricePerStem, prepayDiscountPct(settings, pct, day, o.pickupDate));
     }
     const total = subtotal - Math.min(o.discountAmount, subtotal) + o.storageFee;
     return [{ pct, total, prepayment: prepaymentAmount(total, pct) }];
@@ -176,15 +180,16 @@ export async function totalsByPct({ order: o, items }: Pick<OrderCardData, "orde
 async function reprice(tx: Db, o: Order, actor: Actor | null) {
   if (!["new", "confirmed", "expired"].includes(o.status)) return o;
   const rules = await seasonRules(o.seasonId, tx);
+  const settings = (await getSeason(o.seasonId, tx))!.settings;
   let changed = false;
   for (const it of await itemRows(tx, o.id)) {
-    const rule = findRule(rules, it.tulipType as TulipType, priceDay(o, it.createdAt), o.prepaymentPct);
-    if (!rule || rule.pricePerStem === it.unitPrice) continue; // no price today: keep the last one
+    const day = priceDay(o, it.createdAt);
+    const rule = findRule(rules, it.tulipType as TulipType, day, o.prepaymentPct);
+    if (!rule) continue; // no price today: keep the last one
+    const price = discounted(rule.pricePerStem, prepayDiscountPct(settings, o.prepaymentPct, day, o.pickupDate));
+    if (price === it.unitPrice) continue;
     changed = true;
-    await tx
-      .update(orderItems)
-      .set({ unitPrice: rule.pricePerStem, priceRuleId: rule.id, lineTotal: it.qtyStems * rule.pricePerStem })
-      .where(eq(orderItems.id, it.id));
+    await tx.update(orderItems).set({ unitPrice: price, priceRuleId: rule.id, lineTotal: it.qtyStems * price }).where(eq(orderItems.id, it.id));
   }
   if (!changed) return o;
   const n = await retotal(tx, o);
@@ -230,7 +235,7 @@ export type NewOrder = {
   pct: number;
   pickupDate: string | null;
   pickupTime: string | null;
-  pickupMethod: "self_pickup" | "client_truck";
+  pickupMethod: "self_pickup" | "delivery";
   storage: boolean;
   commentClient: string;
   commentInternal: string;
@@ -269,7 +274,7 @@ export function createOrder(input: NewOrder, actor: Actor | null) {
     });
     if (problems.length) fail(problems.join(". "));
     const day = almatyDay(new Date());
-    const priced = priceLines(lines, await seasonRules(season.id), day, input.pct);
+    const priced = priceLines(lines, await seasonRules(season.id), day, input.pct, prepayDiscountPct(s, input.pct, day, input.pickupDate));
     if (priced.missing.length) fail(`Нет цены на ${dm(day)} (${priced.missing.map((t) => TYPE_NAME[t]).join(", ")}) — проверьте сетку цен`);
     const storageFee = input.storage ? storageDays(day, input.pickupDate) * s.storage_fee_per_day : 0;
 
@@ -604,7 +609,8 @@ export const editItems = (orderId: string, edit: ItemsEdit, actor: Actor) =>
     if (problems.length) fail(problems.join(". "));
     if (RESERVING.includes(o.status)) await checkStock(tx, o, stockLines(after));
 
-    const priced = priceLines(newLines, await seasonRules(o.seasonId, tx), almatyDay(new Date()), o.prepaymentPct);
+    const today = almatyDay(new Date());
+    const priced = priceLines(newLines, await seasonRules(o.seasonId, tx), today, o.prepaymentPct, prepayDiscountPct(season.settings, o.prepaymentPct, today, o.pickupDate));
     if (priced.missing.length) fail("Нет цены на сегодня для добавленных строк — проверьте сетку цен");
     for (const { item, qtyPacks } of changed) {
       if (qtyPacks === 0) await tx.delete(orderItems).where(eq(orderItems.id, item.id));
@@ -703,6 +709,7 @@ export function orderView({ order: o, client, items, payments: pays, season, mon
     paid: m.paid,
     invoice: pays.filter((p) => p.status === "pending").reduce((a, p) => a + p.amount, 0),
     priceDay: almatyDay(o.priceLockedAt ?? new Date()),
+    prepayOff: prepayDiscountPct(season.settings, o.prepaymentPct, almatyDay(o.priceLockedAt ?? new Date()), o.pickupDate),
     phone: prettyPhone(client.phone),
     holdUntil: o.status === "confirmed" ? o.holdUntil : null,
     pickupDate: o.pickupDate,

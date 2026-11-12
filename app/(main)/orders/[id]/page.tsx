@@ -153,7 +153,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           <span className="text-muted">Выдача</span>
           <span className="text-right">
             {o.pickupDate ? `${dm(o.pickupDate)}${o.pickupTime ? ` ${hhmm(o.pickupTime)}` : ""}` : "дата не задана"}
-            {o.pickupMethod === "client_truck" ? ", машина клиента" : ", самовывоз"}
+            {o.pickupMethod === "delivery" ? ", доставка" : ", самовывоз"}
             {o.storageRequested && ", холодильник"}
           </span>
         </div>
@@ -402,7 +402,13 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
       {/* К23: the letter goes by itself on «Бронь» and «Предоплачен»; here it goes again */}
       {LETTER_STATUSES.includes(o.status) && (
         <section className="card space-y-2 text-sm">
-          <h2>Письмо-подтверждение</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2>Письмо-подтверждение</h2>
+            {/* the same text as a file, to send in WhatsApp (review 12.11.2026, П3) */}
+            <a href={`/orders/${o.id}/pdf`} target="_blank" className="btn min-h-9 shrink-0 text-xs">
+              PDF
+            </a>
+          </div>
           {client.email ? (
             <ActionForm toast action={mailAction} className="flex items-center justify-between gap-3">
               <input type="hidden" name="id" value={o.id} />

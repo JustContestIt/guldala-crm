@@ -336,6 +336,20 @@ describe.skipIf(!enabled)("orders service", async () => {
     expect((await o.setPrepaymentPct(id, 100, actor)).ok).toBe(false);
   });
 
+  it("100 % at least 30 days before pickup takes the season's 10 % off; another % or a nearer date pays the grid price (review 12.11.2026, Ц2)", async () => {
+    // doubles: one price for any prepayment, 300 ₸
+    const { id } = ok(await o.createOrder({ ...base, pct: 100, pickupDate: "2027-03-06", lines: [{ productId: white, qtyPacks: 4 }] }, actor));
+    const total = async (orderId: string) => (await o.orderCard(orderId))!.order.total; // opening the card reprices
+    expect(await total(id)).toBe(120 * 270);
+    ok(await o.setPrepaymentPct(id, 40, actor));
+    expect(await total(id)).toBe(120 * 300);
+
+    const today = almatyDay(new Date());
+    await db.update(s.seasons).set({ pickupFrom: today, pickupTo: addDays(today, 40) });
+    const near = ok(await o.createOrder({ ...base, phone: "+77770000003", pct: 100, pickupDate: addDays(today, 29), lines: [{ productId: white, qtyPacks: 4 }] }, actor));
+    expect(await total(near.id)).toBe(120 * 300);
+  });
+
   it("cancels with a reason and frees the stock", async () => {
     const { id } = await placed({ ...base, lines: [{ productId: red, qtyPacks: 4 }] });
     expect((await o.cancelOrder(id, " ", actor)).ok).toBe(false);

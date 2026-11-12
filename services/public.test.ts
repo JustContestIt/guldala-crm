@@ -26,7 +26,7 @@ describe.skipIf(!enabled)("public API", async () => {
     pickupSlot: "08:00–12:00",
     pickupMethod: "self",
     storage: false,
-    client: { company: "Цветы на Абая", name: "Айгуль", phone, legalType: "ip", bin: "", orgName: "" },
+    client: { company: "Цветы на Абая", name: "Айгуль", phone, email: "shop@mail.kz", legalType: "ip", bin: "", orgName: "" },
     comment: "",
     source: "site",
     ...extra,
@@ -86,7 +86,7 @@ describe.skipIf(!enabled)("public API", async () => {
   });
 
   it("an invoice for a person and the fridge by the day: in the comment, the total and the order page", async () => {
-    const res = await post(order([{ productId: pink, packs: 4 }], "+77011111113", { storage: true, client: { company: "", name: "Айгуль", phone: "+77011111113", legalType: "person", bin: "", orgName: "" } }), "10.0.0.6");
+    const res = await post(order([{ productId: pink, packs: 4 }], "+77011111113", { storage: true, client: { company: "", name: "Айгуль", phone: "+77011111113", email: "a@mail.kz", legalType: "person", bin: "", orgName: "" } }), "10.0.0.6");
     expect(res.status).toBe(200);
     const fee = storageDays(almatyDay(new Date()), "2027-03-06") * 1000;
     const r = await res.json();
@@ -99,6 +99,9 @@ describe.skipIf(!enabled)("public API", async () => {
 
   it("refuses with a human text below the minimum and over stock, the client never gets a `new` order", async () => {
     expect(await (await post(order([{ productId: pink, packs: 3 }]), "10.0.0.3")).json()).toEqual({ error: "Минимальный заказ — 120 шт, сейчас 90" });
+    // the site asks for an e-mail: the confirmation goes there (review 12.11.2026, П1)
+    const noMail = order([{ productId: pink, packs: 4 }], "+77011111119"); // its own phone: the hourly limit counts every try
+    expect(await (await post({ ...noMail, client: { ...noMail.client, email: "" } }, "10.0.0.3")).json()).toEqual({ error: "Укажите почту: на неё придёт подтверждение заказа" });
     const over = await post(order([{ productId: red, packs: 6 }]), "10.0.0.3");
     expect(over.status).toBe(400);
     expect((await over.json()).error).toBe("Не хватает: Красный классический — свободно 5 пач., запрошено 6");
@@ -130,13 +133,15 @@ describe.skipIf(!enabled)("public API", async () => {
     expect(await pub.orderByToken("00000000-0000-0000-0000-000000000000")).toBeNull();
   });
 
-  it("season/current: prices at 100 %, the grid at the site's four points, stock minus reserves", async () => {
+  it("season/current: today's full price, the 100 % discount terms, the grid at the site's four points, stock minus reserves", async () => {
     await post(order([{ productId: red, packs: 4 }]), "10.0.0.5");
     expect((await pub.seasonCurrent())!.stock.find((x) => x.productId === red)).toMatchObject({ maxPacks: 5 }); // a new order holds nothing
     await db.update(s.orders).set({ status: "confirmed" }); // Tatiana confirmed it: 30 stems of red left
     const c = (await pub.seasonCurrent())!;
     expect(c.season).toMatchObject({ saleOpen: true, pickupFrom: "2027-03-01", pickupTo: "2027-03-08", peakHoursFrom: "2027-03-05" });
-    expect(c.prices.classic).toEqual({ today: 180, next: { from: "2027-02-01", price: 250 } });
+    // the price at the smallest prepayment: the site shows no «от» (review 12.11.2026, Ц3)
+    expect(c.prices.classic).toEqual({ today: 200, next: { from: "2027-02-01", price: 250 } });
+    expect(c.season.discount).toEqual({ pct: 10, minDays: 30 });
     expect(c.priceGrid.filter((r) => r.periodEnd === "2027-01-31" && r.type === "classic").map((r) => [r.prepaymentPct, r.pricePerStem])).toEqual([
       [40, 200],
       [60, 200],

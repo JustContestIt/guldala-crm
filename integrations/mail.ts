@@ -2,7 +2,7 @@
 // No SMTP_HOST = test mode: the letter is logged, not sent.
 import { createTransport } from "nodemailer";
 
-export type Letter = { to: string; subject: string; text: string };
+export type Letter = { to: string; subject: string; text: string; attachments?: { filename: string; content: Buffer }[] };
 
 // While MAIL_TEST_TO is set ("a@x.kz,b@y.kz"), nobody else gets mail: the same guard as WAZZUP_TEST_PHONES
 const testTo = () =>
@@ -16,7 +16,7 @@ export async function sendMail(l: Letter): Promise<{ provider: "smtp" | "fake" }
   if (only.length && !only.includes(l.to.toLowerCase())) throw new Error("пропущено, не тестовый адрес (MAIL_TEST_TO)");
   const host = process.env.SMTP_HOST;
   if (!host) {
-    console.log(`[mail] → ${l.to}: ${l.subject} (тестовый режим, SMTP_HOST пуст)`);
+    console.log(`[mail] → ${l.to}: ${l.subject}${l.attachments?.length ? ` + ${l.attachments.map((a) => a.filename).join(", ")}` : ""} (тестовый режим, SMTP_HOST пуст)`);
     return { provider: "fake" };
   }
   const port = Number(process.env.SMTP_PORT || 465);
@@ -29,6 +29,6 @@ export async function sendMail(l: Letter): Promise<{ provider: "smtp" | "fake" }
     connectionTimeout: 15_000,
     greetingTimeout: 15_000,
     socketTimeout: 30_000,
-  }).sendMail({ from: { name: "Guldala Tulpan", address: process.env.MAIL_FROM || user }, to: l.to, subject: l.subject, text: l.text });
+  }).sendMail({ from: { name: "Guldala Tulpan", address: process.env.MAIL_FROM || user }, to: l.to, subject: l.subject, text: l.text, attachments: l.attachments });
   return { provider: "smtp" };
 }

@@ -1,5 +1,5 @@
 // Price, stock and order rules of spec §9 as pure functions: the server and the calculator in the browser use the same code.
-import { hoursFor, parseHours, type SeasonSettings } from "./settings";
+import { hoursFor, parseHours, prepayDiscountTerms, type SeasonSettings } from "./settings";
 
 export type TulipType = "classic" | "double";
 export type Status = "new" | "confirmed" | "prepaid" | "ready" | "issued" | "expired" | "cancelled";
@@ -32,6 +32,14 @@ export const prepaymentAmount = (total: number, pct: number) => Math.ceil((total
 // The fridge until pickup is paid by the day, counted from the day the order is placed (Nikita 24.10.2026)
 export const storageDays = (orderDay: string, pickupDate: string | null) =>
   pickupDate ? Math.max(0, Math.round((Date.parse(pickupDate) - Date.parse(orderDay)) / 86_400_000)) : 0;
+
+// The grid price is one for any prepayment; only 100 % paid at least N days before pickup takes a discount off it
+// (review 12.11.2026, Ц1–Ц2). Counted from the price day to the pickup date; no date yet, no discount
+export function prepayDiscountPct(s: SeasonSettings, pct: number, day: string, pickupDate: string | null) {
+  const t = prepayDiscountTerms(s);
+  return pct === 100 && t.pct > 0 && pickupDate && storageDays(day, pickupDate) >= t.days ? t.pct : 0;
+}
+export const discounted = (price: number, offPct: number) => Math.round((price * (100 - offPct)) / 100);
 export const discountAmount = (subtotal: number, pct: number) => Math.floor((subtotal * pct) / 100);
 
 export const isValidPct = (pct: number, s: SeasonSettings) =>
@@ -87,11 +95,13 @@ export function availableStems({ plans, adjustments, items }: StockInput): Map<s
 export type Line = { productId: string | null; tulipType: TulipType; qtyPacks: number; packSize: number };
 export type Priced = { qtyStems: number; unitPrice: number; priceRuleId: string; lineTotal: number };
 
-// Prices every line by the grid on `day`; types with no rule on that day come back in `missing`
-export function priceLines<L extends Line>(lines: L[], rules: Rule[], day: string, pct: number) {
+// Prices every line by the grid on `day`, `offPct` off (prepayDiscountPct); types with no rule on that day come back
+// in `missing`; `saved` is what the discount takes off
+export function priceLines<L extends Line>(lines: L[], rules: Rule[], day: string, pct: number, offPct = 0) {
   const priced: (L & Priced)[] = [];
   const missing = new Set<TulipType>();
   let validUntil: string | null = null;
+  let saved = 0;
   for (const l of lines) {
     const rule = findRule(rules, l.tulipType, day, pct);
     if (!rule) {
@@ -100,9 +110,11 @@ export function priceLines<L extends Line>(lines: L[], rules: Rule[], day: strin
     }
     if (!validUntil || rule.dateTo < validUntil) validUntil = rule.dateTo;
     const qtyStems = l.qtyPacks * l.packSize;
-    priced.push({ ...l, qtyStems, unitPrice: rule.pricePerStem, priceRuleId: rule.id, lineTotal: qtyStems * rule.pricePerStem });
+    const unitPrice = discounted(rule.pricePerStem, offPct);
+    saved += qtyStems * (rule.pricePerStem - unitPrice);
+    priced.push({ ...l, qtyStems, unitPrice, priceRuleId: rule.id, lineTotal: qtyStems * unitPrice });
   }
-  return { lines: priced, subtotal: priced.reduce((a, l) => a + l.lineTotal, 0), missing: [...missing], validUntil };
+  return { lines: priced, subtotal: priced.reduce((a, l) => a + l.lineTotal, 0), missing: [...missing], validUntil, saved };
 }
 
 const packs = (n: number) => `${n} пач.`;

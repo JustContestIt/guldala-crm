@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { requireOwner } from "@/lib/auth";
 import { day, int, oneOf, str, uuid, type FormState } from "@/lib/form";
 import { fromForm, TYPES } from "@/lib/grid";
-import type { SeasonSettings } from "@/lib/settings";
 import { CHANNEL_STATE } from "@/integrations/messaging";
 import { EFFORTS } from "@/integrations/openai";
 import { MODES, PROMPT_PARTS, saveAssistantSettings, savePrompt } from "@/services/assistant";
@@ -34,7 +33,7 @@ export async function updateSeasonAction(_: FormState, fd: FormData): Promise<Fo
   await requireOwner();
   const id = uuid(fd, "id");
   if (!id) return { error: "Сезон не найден" };
-  const settings: Omit<SeasonSettings, "pack_size"> = {
+  const settings: svc.SeasonForm = {
     min_order_stems: int(fd, "min_order_stems"),
     min_order_scope: oneOf(fd, "min_order_scope", ["total", "per_color"], "total"),
     hold_days: int(fd, "hold_days"),
@@ -67,6 +66,13 @@ export async function saveGridAction(_: FormState, fd: FormData): Promise<FormSt
   if (!seasonId) return { error: "Сезон не найден" };
   const r = fromForm(fd);
   return "error" in r ? { error: r.error } : answer(await svc.saveGrid(seasonId, r.rows), "Сетка сохранена");
+}
+
+export async function discountAction(_: FormState, fd: FormData): Promise<FormState> {
+  await requireOwner();
+  const seasonId = uuid(fd, "seasonId");
+  if (!seasonId) return { error: "Сезон не найден" };
+  return answer(await svc.setPrepayDiscount(seasonId, int(fd, "discountPct"), int(fd, "discountDays")), "Скидка сохранена");
 }
 
 export async function packSizeAction(_: FormState, fd: FormData): Promise<FormState> {

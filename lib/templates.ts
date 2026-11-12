@@ -5,6 +5,8 @@ export type TLine = { name: string; qtyPacks: number; packSize: number; unitPric
 
 // the greenhouse, as clients read it in every message (2GIS: go.2gis.com/OhBXy)
 export const PLACE = "с. Бесагаш, ул. Мамыр, 1";
+// Delivery is by Yandex Delivery, its price agreed with the seller each time (review 12.11.2026, С3)
+export const DELIVERY_NOTE = "стоимость доставки определяется отдельно, по договорённости с продавцом";
 
 const line = (l: TLine) => `— ${l.name}, ${l.qtyPacks} пач. × ${l.packSize} шт × ${tenge(l.unitPrice)} = ${tenge(l.lineTotal)}`;
 const short = (lines: TLine[]) => lines.map((l) => `${l.name} ${l.qtyPacks} пач.`).join(", ");
@@ -23,11 +25,12 @@ export type OrderView = {
   paid: number;
   invoice: number; // a Kaspi invoice issued and still awaited, 0 if none
   priceDay: string; // the grid day the price is by: the lock day or today
+  prepayOff: number; // % off for a 100 % prepayment well before pickup (review 12.11.2026, Ц2); 0 = none
   phone: string;
   holdUntil: Date | null; // only while the order is a running hold (`confirmed`)
   pickupDate: string | null;
   pickupTime: string | null;
-  pickupMethod: "self_pickup" | "client_truck";
+  pickupMethod: "self_pickup" | "delivery";
   pickupHours: string;
 };
 
@@ -62,7 +65,9 @@ export function orderText(key: OrderTemplate, o: OrderView): string {
               ? `Бронь до ${hold}. Чтобы её закрепить, внесите предоплату ${o.pct} % — ${tenge(o.prepaymentDue)}: наличными или по счёту Kaspi на номер ${o.phone}. Без предоплаты бронь снимется сама.`
               : `Проверю наличие и подтвержу бронь, счёт Kaspi выставлю на номер ${o.phone}.`,
         pickup
-          ? `Выдача ${pickup}, ${o.pickupMethod === "client_truck" ? "отгрузка в вашу машину" : "самовывоз"}, ${PLACE}.`
+          ? o.pickupMethod === "delivery"
+            ? `Доставка ${pickup}: ${DELIVERY_NOTE}.`
+            : `Выдача ${pickup}, самовывоз, ${PLACE}.`
           : `Дату выдачи согласуем, самовывоз с теплицы, ${PLACE}.`,
       ]
         .filter(Boolean)

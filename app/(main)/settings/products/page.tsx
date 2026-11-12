@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm, Submit } from "@/components/ActionForm";
-import { BackLink, Field, StatusBadge } from "@/components/ui";
+import { Field, StatusBadge } from "@/components/ui";
 import { db } from "@/db";
 import { products, stockAdjustments, users } from "@/db/schema";
 import { requireOwner } from "@/lib/auth";
@@ -138,7 +138,6 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-4">
-      <BackLink href="/more">Настройки</BackLink>
       <h1>Склад товаров</h1>
       {/* which season the packs are counted for, in sight (review 09.11.2026, К5) */}
       <p className={`rounded-xl px-4 py-3 text-lg font-bold ${season ? "bg-mint text-accent-dark" : "bg-warn-bg text-warn"}`}>

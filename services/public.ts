@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { clients, conversations, orders } from "@/db/schema";
 import { availableStems, findRule, type TulipType } from "@/lib/calc";
 import { almatyDay, dm, hhmm, normalizePhone, tenge } from "@/lib/format";
-import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { DEFAULT_SETTINGS, prepayDiscountTerms } from "@/lib/settings";
 import { orderText } from "@/lib/templates";
 import { currentSeason, seasonRules, stockInput, tulips } from "./catalog";
 import { sendMessage, whatsappConversation } from "./messages";
@@ -24,11 +24,14 @@ export async function seasonCurrent() {
   const [rules, products, input] = await Promise.all([seasonRules(season.id), tulips(), stockInput(season.id)]);
   const free = availableStems(input);
   const fewBelow = (s.stock_few_below_pct ?? DEFAULT_SETTINGS.stock_few_below_pct) / 100;
+  const off = prepayDiscountTerms(s);
 
-  // price at 100 % prepayment today; after the last period the last price stays on show (sale closed)
-  const at100 = (t: TulipType) => {
-    const mine = rules.filter((r) => r.tulipType === t && r.prepaymentMinPct <= 100 && 100 <= r.prepaymentMaxPct);
-    const now = findRule(mine, t, day, 100) ?? mine.at(-1) ?? null;
+  // today's full price, the one at the smallest prepayment: the site shows no «от» (review 12.11.2026, Ц3);
+  // after the last period the last price stays on show (sale closed)
+  const base = s.prepayment_min_pct;
+  const atBase = (t: TulipType) => {
+    const mine = rules.filter((r) => r.tulipType === t && r.prepaymentMinPct <= base && base <= r.prepaymentMaxPct);
+    const now = findRule(mine, t, day, base) ?? mine.at(-1) ?? null;
     const next = now && mine.find((r) => r.dateFrom > now.dateTo);
     return { today: now?.pricePerStem ?? 0, next: next ? { from: next.dateFrom, price: next.pricePerStem } : null };
   };
@@ -44,9 +47,10 @@ export async function seasonCurrent() {
       peakHoursFrom: s.peak_hours_from,
       packSize: s.pack_size, // the site counts and writes its pack and minimum from here (review 09.11.2026, К9)
       minStems: s.min_order_stems,
+      discount: { pct: off.pct, minDays: off.days }, // 100 % prepayment at least minDays before pickup: pct off (Ц2)
     },
     asOf: new Date().toISOString(),
-    prices: { classic: at100("classic"), double: at100("double") },
+    prices: { classic: atBase("classic"), double: atBase("double") },
     priceGrid: rules.flatMap((r) =>
       SITE_PCTS.filter((p) => r.prepaymentMinPct <= p && p <= r.prepaymentMaxPct).map((p) => ({
         periodEnd: r.dateTo,
@@ -101,7 +105,7 @@ export async function createSiteOrder(o: SiteOrder, channel: Channel = "site") {
       pct: o.prepaymentPct,
       pickupDate: o.pickupDate,
       pickupTime: slot,
-      pickupMethod: o.pickupMethod === "client_truck" ? "client_truck" : "self_pickup",
+      pickupMethod: o.pickupMethod === "delivery" ? "delivery" : "self_pickup",
       storage: o.storage,
       commentClient: [legal, o.comment].filter(Boolean).join("\n"),
       commentInternal: "",
@@ -150,6 +154,7 @@ export async function orderByToken(token: string) {
     asOf: new Date().toISOString(), // the CRM's clock, so «days left» doesn't depend on the visitor's
     holdUntil: o.status === "confirmed" ? o.holdUntil : null,
     prepaymentPct: o.prepaymentPct,
+    prepayOff: view.prepayOff, // the prices below are this % off for a 100 % prepayment (review 12.11.2026, Ц4)
     items: items.map((i) => ({ productId: i.productId, color: i.color ?? "", type: i.tulipType, packs: i.qtyPacks, stems: i.qtyStems, pricePerStem: i.unitPrice, sum: i.lineTotal })),
     storageFee: o.storageFee,
     storageDays: view.storageDays,
@@ -159,7 +164,7 @@ export async function orderByToken(token: string) {
     invoice: invoice ? { provider: "kaspi" as const, amount: invoice.amount, expiresAt: null } : null,
     // a booking waiting for the client's prepayment: what it costs at every % by the held prices (С9)
     options: o.status === "confirmed" && !invoice ? await totalsByPct(card, SITE_PCTS) : [],
-    pickup: { date: o.pickupDate, slot: hhmm(o.pickupTime), method: o.pickupMethod === "client_truck" ? "client_truck" : "self", storage: o.storageRequested },
+    pickup: { date: o.pickupDate, slot: hhmm(o.pickupTime), method: o.pickupMethod === "delivery" ? "delivery" : "self", storage: o.storageRequested },
     events: events
       .map(({ e }) => ({ at: e.createdAt.toISOString(), type: eventType(e) }))
       .filter((e): e is { at: string; type: string } => !!e.type)

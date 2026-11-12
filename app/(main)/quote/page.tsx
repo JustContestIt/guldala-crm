@@ -86,7 +86,12 @@ async function Created({ id }: { id: string }) {
         </div>
       </section>
       <section className="card space-y-2">
-        <h2>Подтверждение клиенту</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2>Подтверждение клиенту</h2>
+          <a href={`/orders/${o.id}/pdf`} target="_blank" className="btn min-h-9 shrink-0 text-xs">
+            PDF
+          </a>
+        </div>
         <Composer templates={[{ key: "booking", label: "Подтверждение", text: orderText("booking", view) }]} phone={client.phone} orderId={o.id} />
       </section>
     </div>

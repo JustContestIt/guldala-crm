@@ -59,9 +59,9 @@ describe.skipIf(!enabled)("order confirmation by e-mail", async () => {
       .returning();
     [{ id: pink }] = await db.insert(s.products).values({ name: "Розовый классический", tulipType: "classic", color: "pink" }).returning();
     await db.insert(s.stockPlans).values({ seasonId: season.id, productId: pink, plannedStems: 3000 });
+    // one price for any prepayment; 100 % far enough ahead takes the season's 10 % off (review 12.11.2026, Ц1–Ц2)
     await db.insert(s.priceRules).values([
-      { seasonId: season.id, tulipType: "classic", dateFrom: "2026-01-01", dateTo: "2027-03-08", prepaymentMinPct: 40, prepaymentMaxPct: 90, pricePerStem: 200 },
-      { seasonId: season.id, tulipType: "classic", dateFrom: "2026-01-01", dateTo: "2027-03-08", prepaymentMinPct: 100, prepaymentMaxPct: 100, pricePerStem: 180 },
+      { seasonId: season.id, tulipType: "classic", dateFrom: "2026-01-01", dateTo: "2027-03-08", prepaymentMinPct: 40, prepaymentMaxPct: 100, pricePerStem: 200 },
     ]);
   });
 
@@ -79,13 +79,13 @@ describe.skipIf(!enabled)("order confirmation by e-mail", async () => {
     expect(await mails(row.id)).toHaveLength(2);
   });
 
-  it("a booking without prepayment: «Новый» gets no letter, the confirmed one does, with the order at every %", async () => {
+  it("a booking without prepayment: the request gets a letter, the confirmed booking another, with the order at every %", async () => {
     const row = await placed(await site(false));
     expect(row.status).toBe("new");
-    expect(await mails(row.id)).toHaveLength(0);
+    expect(await mails(row.id)).toHaveLength(1);
 
     expect((await o.confirmOrder(row.id, actor)).ok).toBe(true);
-    expect(await mails(row.id)).toHaveLength(1);
+    expect(await mails(row.id)).toHaveLength(2);
     const page = (await pub.orderByToken(row.publicToken))!;
     expect(page.invoice).toBeNull();
     expect(page.options).toEqual([

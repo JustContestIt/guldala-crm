@@ -16,6 +16,8 @@ export type SeasonSettings = {
   client_notifications: "manual" | "auto";
   stock_few_below_pct: number; // the site says «мало» below this % of the plan (spec §14)
   storage_fee_per_day: number; // ₸ per order for each day in the fridge, from the order day to pickup (spec §9)
+  full_prepay_discount_pct: number; // off the grid price for a 100 % prepayment… (review 12.11.2026, Ц2)
+  full_prepay_min_days: number; // …made at least this many days before pickup
 };
 
 export const DEFAULT_SETTINGS: SeasonSettings = {
@@ -35,7 +37,15 @@ export const DEFAULT_SETTINGS: SeasonSettings = {
   client_notifications: "manual",
   stock_few_below_pct: 30,
   storage_fee_per_day: 1000,
+  full_prepay_discount_pct: 10,
+  full_prepay_min_days: 30,
 };
+
+// The 100 % prepayment discount; a season saved before 12.11.2026 has no such keys, the defaults apply
+export const prepayDiscountTerms = (s: SeasonSettings) => ({
+  pct: s.full_prepay_discount_pct ?? DEFAULT_SETTINGS.full_prepay_discount_pct,
+  days: s.full_prepay_min_days ?? DEFAULT_SETTINGS.full_prepay_min_days,
+});
 
 // "08:00–18:00" → ["08:00", "18:00"]; null if it isn't a range
 export function parseHours(s: string): [string, string] | null {

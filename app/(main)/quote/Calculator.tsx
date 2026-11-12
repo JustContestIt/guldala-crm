@@ -8,7 +8,7 @@ import { Field } from "@/components/ui";
 import type { Rule } from "@/lib/calc";
 import { dm, normalizePhone, tenge } from "@/lib/format";
 import { computeQuote, type LineState, type ProductOpt } from "@/lib/quote";
-import { hoursFor, pctOptions, type SeasonSettings } from "@/lib/settings";
+import { hoursFor, pctOptions, prepayDiscountTerms, type SeasonSettings } from "@/lib/settings";
 
 type Client = { phone: string; name: string; company: string | null; email: string | null };
 
@@ -42,7 +42,8 @@ export function Calculator(p: {
   const ready = q.allColored && !warnings.length;
 
   return (
-    <ActionForm action={createOrderAction} className="space-y-4">
+    // grid gap, not space-y: the blocks sit inside the display:contents wrapper below, which space-y doesn't reach
+    <ActionForm action={createOrderAction} className="grid gap-4">
       {/* Enter in a field would press the first button and book a hold nobody chose */}
       <div className="contents" onKeyDown={(e) => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
         <input type="hidden" name="lines" value={q.rows.map((r) => `${r.productId}:${r.qtyPacks}`).join(",")} />
@@ -78,8 +79,8 @@ export function Calculator(p: {
               <input name="company" value={c.company} onChange={(e) => setC({ ...c, company: e.target.value })} className="input" />
             </Field>
           </div>
-          <Field label="Почта (необязательно): сюда придёт подтверждение">
-            <input name="email" type="email" inputMode="email" value={c.email} onChange={(e) => setC({ ...c, email: e.target.value })} className="input" />
+          <Field label="Почта: сюда придёт подтверждение">
+            <input name="email" type="email" inputMode="email" required value={c.email} onChange={(e) => setC({ ...c, email: e.target.value })} className="input" />
           </Field>
         </section>
 
@@ -116,7 +117,7 @@ export function Calculator(p: {
               <div className="flex flex-wrap gap-4">
                 {[
                   ["self_pickup", "Самовывоз"],
-                  ["client_truck", "Машина клиента"],
+                  ["delivery", "Доставка"],
                 ].map(([v, label]) => (
                   <label key={v} className="flex items-center gap-2">
                     <input type="radio" name="pickupMethod" value={v} defaultChecked={v === "self_pickup"} className="size-5" />
@@ -145,7 +146,13 @@ export function Calculator(p: {
 
         {/* the prepayment and the rest are what the client asks about: big, apart from each other (review 09.11.2026, К26) */}
         <div className="card space-y-2">
-          <div className="flex items-baseline justify-between">
+          {q.discount.amount > 0 && (
+            <div className="flex items-baseline justify-between gap-3 px-3 text-accent-dark">
+              <span className="font-semibold">Скидка {q.discount.pct}% за 100% предоплату</span>
+              <span className="font-bold tabular-nums">−{tenge(q.discount.amount)}</span>
+            </div>
+          )}
+          <div className="flex items-baseline justify-between gap-3 px-3">
             <span className="text-xl font-extrabold">Итого</span>
             <span className="text-3xl font-extrabold tabular-nums">{tenge(q.total)}</span>
           </div>
@@ -158,6 +165,11 @@ export function Calculator(p: {
             <span className="text-xl font-bold tabular-nums">{tenge(q.total - q.prepayment)}</span>
           </div>
           {q.priced.validUntil && <p className="px-3 font-semibold">Цена действует до {dm(q.priced.validUntil)}</p>}
+          {pct === 100 && !q.discount.pct && prepayDiscountTerms(s).pct > 0 && (
+            <p className="px-3 text-sm text-muted">
+              Скидка {prepayDiscountTerms(s).pct}% за 100% предоплату — когда до даты выдачи {prepayDiscountTerms(s).days} дней и больше.
+            </p>
+          )}
         </div>
 
         {warnings.length > 0 && (

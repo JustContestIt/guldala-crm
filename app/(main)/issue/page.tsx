@@ -87,10 +87,10 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
                 <p className={`text-lg font-bold ${bal > 0 ? "text-up" : "text-accent"}`}>{bal > 0 ? `К доплате ${tenge(bal)}` : "Оплачен полностью"}</p>
                 {bal > 0 && <p className="font-semibold tabular-nums text-muted">оплачено {tenge(r.paid)}</p>}
               </div>
-              {(r.storageRequested || r.pickupMethod === "client_truck") && (
+              {(r.storageRequested || r.pickupMethod === "delivery") && (
                 <p className="flex gap-2 text-sm font-semibold">
                   {r.storageRequested && <span className="rounded-full bg-mint px-2.5 py-0.5 text-accent-dark">холодильник</span>}
-                  {r.pickupMethod === "client_truck" && <span className="rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">машина клиента</span>}
+                  {r.pickupMethod === "delivery" && <span className="rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">доставка</span>}
                 </p>
               )}
               <div className="flex flex-wrap items-start gap-2">

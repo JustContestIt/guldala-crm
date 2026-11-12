@@ -22,6 +22,7 @@ describe("orderText", () => {
     paid: 0,
     invoice: 0,
     priceDay: "2026-10-21",
+    prepayOff: 0,
     phone: "+77770000001",
     holdUntil: new Date("2026-10-24T13:00:00Z"), // 18:00 in Almaty
     pickupDate: "2027-03-06",

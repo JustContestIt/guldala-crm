@@ -7,6 +7,8 @@ export async function POST(req: Request) {
   const client = obj(b.client);
   const phone = str(client.phone, 30);
   if (tooMany(req, phone)) return refuse(TOO_MANY, 429);
+  // the site asks for an e-mail: the confirmation goes there (review 12.11.2026, П1); the WhatsApp assistant books without one
+  if (!str(client.email, 200)) return refuse("Укажите почту: на неё придёт подтверждение заказа");
   const r = await createSiteOrder({
     items: (Array.isArray(b.items) ? b.items : []).map((i) => ({ productId: str(obj(i).productId, 40), packs: num(obj(i).packs) })),
     prepaymentPct: num(b.prepaymentPct),

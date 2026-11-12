@@ -170,7 +170,7 @@ async function main() {
   const c = await order(2, [["yellow-classic", 4], ["pink-double", 2]], { pct: 60 });
   must(await o.recordPayment(c.id, { amount: 10_000, method: "kaspi_invoice", paid: false, invoiceRef: "KSP-1001", note: "" }, actor));
   // prepaid + a color substitution
-  const p = await order(3, [["pink-classic", 6]], { pct: 100, pickupTime: "14:30", pickupMethod: "client_truck" });
+  const p = await order(3, [["pink-classic", 6]], { pct: 100, pickupTime: "14:30", pickupMethod: "delivery" });
   must(await o.recordPayment(p.id, { amount: 32_400, method: "kaspi_invoice", paid: true, invoiceRef: "KSP-1002", note: "" }, actor));
   const [pItem] = await db.select().from(s.orderItems).where(eq(s.orderItems.orderId, p.id));
   must(await o.substituteItem(pItem.id, P["purple-classic"], "розовых не хватило, согласовано по телефону", actor));

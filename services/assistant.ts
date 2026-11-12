@@ -66,7 +66,7 @@ const TOOLS: Tool[] = [
       prepaymentPct: PCT,
       pickupDate: nullable("string", "дата вывоза ГГГГ-ММ-ДД"),
       pickupTime: nullable("string", "время вывоза ЧЧ:ММ"),
-      pickupMethod: { type: "string", enum: ["self_pickup", "client_truck"], description: "самовывоз или своя машина клиента" },
+      pickupMethod: { type: "string", enum: ["self_pickup", "delivery"], description: "самовывоз с теплицы или доставка (Яндекс Доставка, стоимость по договорённости с продавцом)" },
       legalType: { type: "string", enum: ["ip", "too", "person"], description: "счёт на ИП, на ТОО или на физическое лицо" },
       bin: nullable("string", "БИН ТОО, 12 цифр"),
       orgName: nullable("string", "название ТОО"),
@@ -180,7 +180,7 @@ const RUN: Record<string, (a: Args, c: Ctx) => Promise<unknown>> = {
         prepaymentPct: num(a.prepaymentPct),
         pickupDate: pickupDate!,
         pickupSlot: pickupTime,
-        pickupMethod: a.pickupMethod === "client_truck" ? "client_truck" : "self_pickup",
+        pickupMethod: a.pickupMethod === "delivery" ? "delivery" : "self_pickup",
         storage: false, // no fridge (review 09.11.2026, С2)
         client: { company: cl.company ?? "", name: cl.name, phone: c.phone, legalType, bin, orgName },
         comment: str(a.comment, 1000),

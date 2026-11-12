@@ -6,6 +6,7 @@ import {
   gridProblems,
   money,
   orderProblems,
+  prepayDiscountPct,
   prepaymentAmount,
   priceLines,
   shortages,
@@ -202,6 +203,28 @@ describe("priceLines", () => {
     const r = priceLines([{ productId: "red", tulipType: "classic", qtyPacks: 4, packSize: 30 }], RULES, "2027-04-01", 40);
     expect(r.lines).toEqual([]);
     expect(r.missing).toEqual(["classic"]);
+  });
+});
+
+describe("the 100 % prepayment discount (review 12.11.2026, Ц2)", () => {
+  const s = DEFAULT_SETTINGS; // 10 % off, at least 30 days before pickup
+  it("only 100 %, only 30 days or more before pickup, only with a date", () => {
+    expect(prepayDiscountPct(s, 100, "2027-02-06", "2027-03-08")).toBe(10); // 30 days
+    expect(prepayDiscountPct(s, 100, "2027-02-07", "2027-03-08")).toBe(0); // 29
+    expect(prepayDiscountPct(s, 80, "2026-11-12", "2027-03-08")).toBe(0);
+    expect(prepayDiscountPct(s, 100, "2026-11-12", null)).toBe(0);
+    expect(prepayDiscountPct({ ...s, full_prepay_discount_pct: 0 }, 100, "2026-11-12", "2027-03-08")).toBe(0);
+    // a season saved before 12.11 has no such keys: the defaults apply
+    const old: Partial<typeof s> = { ...s };
+    delete old.full_prepay_discount_pct;
+    delete old.full_prepay_min_days;
+    expect(prepayDiscountPct(old as typeof s, 100, "2026-11-12", "2027-03-08")).toBe(10);
+  });
+
+  it("priceLines takes it off every stem and reports what it saved", () => {
+    const r = priceLines([{ productId: "red", tulipType: "classic", qtyPacks: 4, packSize: 30 }], RULES, "2026-12-20", 40, 10);
+    expect(r.lines[0]).toMatchObject({ unitPrice: 180, lineTotal: 21_600 });
+    expect(r.saved).toBe(2_400);
   });
 });
 
